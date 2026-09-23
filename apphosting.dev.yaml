@@ -6,3 +6,8 @@ env:
     value: "AIzaSyA-7YnM7NDSpspN5PbJI-1S1E2YYVQGvpk"
     availability:
       - RUNTIME
+  # Public URL of this environment; e-mail links return here.
+  - variable: APP_URL
+    value: "https://mishmarot-dev--mishmarot-dev-cea4a.europe-west4.hosted.app"
+    availability:
+      - RUNTIME
