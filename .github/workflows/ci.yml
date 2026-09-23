@@ -56,13 +56,34 @@ jobs:
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
           PROJECT_ID=$(node -p "JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects['$PROJECT_ALIAS']")
           echo "FIREBASE_PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
-      - name: Deploy rules and indexes
+      # Each step runs even if another fails, so one missing IAM role doesn't block the rest;
+      # the last step fails the job if anything failed.
+      - name: Deploy indexes
+        id: indexes
         if: steps.creds.outputs.skip != 'true'
-        run: npx firebase deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ALIAS" --non-interactive
+        continue-on-error: true
+        run: npx firebase deploy --only firestore:indexes --project "$PROJECT_ALIAS" --non-interactive
+      - name: Deploy security rules
+        id: rules
+        if: steps.creds.outputs.skip != 'true'
+        continue-on-error: true
+        run: npx firebase deploy --only firestore:rules --project "$PROJECT_ALIAS" --non-interactive
       - name: Base data and first admin
+        id: bootstrap
         if: steps.creds.outputs.skip != 'true'
+        continue-on-error: true
         env:
           BOOTSTRAP_ADMIN_USERNAME: ${{ secrets.BOOTSTRAP_ADMIN_USERNAME }}
           BOOTSTRAP_ADMIN_NAME: ${{ secrets.BOOTSTRAP_ADMIN_NAME }}
           BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
         run: npm run bootstrap
+      - name: Service account in use
+        if: steps.creds.outputs.skip != 'true'
+        run: node -e "console.log('client_email:', require(process.env.GOOGLE_APPLICATION_CREDENTIALS).client_email)"
+      - name: Result
+        if: steps.creds.outputs.skip != 'true'
+        run: |
+          echo "indexes: ${{ steps.indexes.outcome }}, rules: ${{ steps.rules.outcome }}, bootstrap: ${{ steps.bootstrap.outcome }}"
+          if [ "${{ steps.indexes.outcome }}" != "success" ] || [ "${{ steps.rules.outcome }}" != "success" ] || [ "${{ steps.bootstrap.outcome }}" != "success" ]; then
+            exit 1
+          fi
