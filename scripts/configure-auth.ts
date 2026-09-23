@@ -1,8 +1,10 @@
 /**
  * Configures Firebase Authentication e-mails for a real project (used by CI on deploy):
  * - adds the app's domain to the authorized domains,
- * - points e-mail links at the app's own page (/auth/action) instead of Firebase's default one,
- * - sets the Hebrew "set your password" e-mail (the password-reset template).
+ * - points e-mail links at the app's own page (/auth/action) instead of Firebase's default one.
+ *
+ * The e-mail text itself can't be changed through the API on this project
+ * (EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED), so Firebase's built-in Hebrew template is used.
  *
  *   GOOGLE_APPLICATION_CREDENTIALS=./service-account.json FIREBASE_PROJECT_ID=mishmarot-dev \
  *     APP_URL=https://... npm run configure-auth
@@ -10,17 +12,6 @@
  * The service account needs the "Firebase Authentication Admin" role. Safe to run again.
  */
 import { applicationDefault } from "firebase-admin/app";
-
-const SUBJECT = "הגדרת סיסמה למערכת משמרות";
-
-const BODY = `<div dir="rtl" style="font-family: Arial, sans-serif; text-align: right;">
-<p>שלום,</p>
-<p>נפתח עבורך משתמש במערכת המשמרות (או שהתבקש איפוס סיסמה) עבור %EMAIL%.</p>
-<p>לבחירת סיסמה יש ללחוץ על הקישור:</p>
-<p><a href="%LINK%">הגדרת סיסמה</a></p>
-<p>הקישור בתוקף לשעה. אם פג תוקפו, אפשר לבקש קישור חדש בעמוד הכניסה (״שכחתי סיסמה״).</p>
-<p>אם לא ציפית להודעה הזו, אפשר להתעלם ממנה.</p>
-</div>`;
 
 type Config = { authorizedDomains?: string[] };
 
@@ -42,13 +33,7 @@ async function main() {
   const config = (await current.json()) as Config;
   const domains = config.authorizedDomains ?? [];
 
-  const updateMask = [
-    "authorizedDomains",
-    "notification.sendEmail.callbackUri",
-    "notification.sendEmail.resetPasswordTemplate.subject",
-    "notification.sendEmail.resetPasswordTemplate.body",
-    "notification.sendEmail.resetPasswordTemplate.bodyFormat",
-  ].join(",");
+  const updateMask = "authorizedDomains,notification.sendEmail.callbackUri";
   const res = await fetch(`${url}?updateMask=${updateMask}`, {
     method: "PATCH",
     headers,
@@ -57,7 +42,6 @@ async function main() {
       notification: {
         sendEmail: {
           callbackUri: `${appUrl}/auth/action`,
-          resetPasswordTemplate: { subject: SUBJECT, body: BODY, bodyFormat: "HTML" },
         },
       },
     }),
