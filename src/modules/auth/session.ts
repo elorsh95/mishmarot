@@ -9,7 +9,7 @@ import { audit } from "@/modules/audit/service";
 import type { Actor } from "@/modules/permissions/check";
 import { getRole } from "@/modules/roles/service";
 import { managedTeamIds } from "@/modules/teams/service";
-import { authEmailFor, findUserByUsername, getUser, markLoggedIn } from "@/modules/users/service";
+import { authEmailOf, findUserByUsername, getUser, markLoggedIn } from "@/modules/users/service";
 
 export const SESSION_COOKIE = "__session";
 const SESSION_DAYS = 5;
@@ -67,7 +67,7 @@ export async function login(username: string, password: string): Promise<LoginRe
   if (!user) return invalid;
 
   // The password is checked before revealing that an account is disabled.
-  const result = await signInWithPassword(authEmailFor(user.id), password);
+  const result = await signInWithPassword(authEmailOf(user), password);
   if (!result.ok) {
     if (result.reason === "too_many_attempts") {
       return { ok: false, error: "בוצעו יותר מדי ניסיונות. יש לנסות שוב בעוד כמה דקות" };

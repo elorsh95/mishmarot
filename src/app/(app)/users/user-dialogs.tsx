@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Checkbox, Field, FormError, Input, Select } from "@/components/ui/form";
+import { useToast } from "@/components/ui/toast";
 import { useAction } from "@/components/ui/use-action";
 import type { UserListItem } from "@/modules/users/service";
 import { createUserAction, resetPasswordAction, updateUserAction } from "./actions";
@@ -28,11 +29,12 @@ export function UserDialog({
 }) {
   const [username, setUsername] = useState(user?.username ?? "");
   const [fullName, setFullName] = useState(user?.fullName ?? "");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState(user?.email ?? "");
   const [roleId, setRoleId] = useState(user?.roleId ?? "");
   const [managedTeamIds, setManagedTeamIds] = useState<string[]>(user?.managedTeamIds ?? []);
   const [isActive, setIsActive] = useState(user?.isActive ?? true);
   const { run, pending, error, fieldErrors } = useAction();
+  const toast = useToast();
 
   const visibleTeams = teams.filter((t) => t.isActive || managedTeamIds.includes(t.id));
 
@@ -41,9 +43,18 @@ export function UserDialog({
   }
 
   function save() {
-    const base = { username, fullName, roleId, managedTeamIds };
-    if (user) run(() => updateUserAction(user.id, { ...base, isActive }), { onSuccess: onClose });
-    else run(() => createUserAction({ ...base, password }), { onSuccess: onClose });
+    const base = { username, fullName, email, roleId, managedTeamIds };
+    if (user) {
+      run(() => updateUserAction(user.id, { ...base, isActive }), { onSuccess: onClose });
+      return;
+    }
+    run(() => createUserAction(base), {
+      onSuccess: (result) => {
+        if (result.emailSent) toast.success(`המשתמש נוצר ונשלחה הזמנה ל-${result.email}`);
+        else toast.error("המשתמש נוצר, אך שליחת ההזמנה נכשלה. אפשר לשלוח שוב מרשימת המשתמשים");
+        onClose();
+      },
+    });
   }
 
   return (
@@ -51,13 +62,14 @@ export function UserDialog({
       open
       onClose={onClose}
       title={user ? `עריכת משתמש: ${user.fullName}` : "משתמש חדש"}
+      description={user ? undefined : "המשתמש יקבל מייל עם קישור לקביעת סיסמה"}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={pending}>
             ביטול
           </Button>
           <Button onClick={save} loading={pending}>
-            שמירה
+            {user ? "שמירה" : "יצירה ושליחת הזמנה"}
           </Button>
         </>
       }
@@ -88,23 +100,27 @@ export function UserDialog({
             onChange={(e) => setUsername(e.target.value)}
           />
         </Field>
-        {user ? null : (
-          <Field
-            label="סיסמה"
-            htmlFor="user-password"
-            error={fieldErrors.password}
-            hint={PASSWORD_HINT}
-          >
-            <Input
-              id="user-password"
-              type="password"
-              dir="ltr"
-              value={password}
-              autoComplete="new-password"
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </Field>
-        )}
+        <Field
+          label="מייל"
+          htmlFor="user-email"
+          error={fieldErrors.email}
+          hint={
+            user
+              ? user.email
+                ? "שינוי המייל משנה גם את הכתובת לשליחת קישורי סיסמה"
+                : "יש להוסיף מייל כדי לאפשר שליחת קישור לאיפוס סיסמה"
+              : "יישלח קישור שבו המשתמש יבחר סיסמה ויכנס למערכת"
+          }
+        >
+          <Input
+            id="user-email"
+            type="email"
+            dir="ltr"
+            value={email}
+            autoComplete="off"
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </Field>
         <Field
           label="תפקיד"
           htmlFor="user-role"
@@ -179,7 +195,7 @@ export function ResetPasswordDialog({
       open
       onClose={onClose}
       size="sm"
-      title="איפוס סיסמה"
+      title="הגדרת סיסמה ידנית"
       description={`${user.fullName} (${user.username})`}
       footer={
         <>
@@ -210,7 +226,8 @@ export function ResetPasswordDialog({
           />
         </Field>
         <p className="text-sm text-fg-muted">
-          לאחר האיפוס המשתמש ינותק מכל המכשירים ויצטרך להתחבר עם הסיסמה החדשה.
+          עדיף לשלוח למשתמש קישור במייל, כך שרק הוא יודע את הסיסמה. אחרי הגדרה ידנית המשתמש ינותק
+          מכל המכשירים ויצטרך להתחבר עם הסיסמה החדשה.
         </p>
       </div>
     </Dialog>
