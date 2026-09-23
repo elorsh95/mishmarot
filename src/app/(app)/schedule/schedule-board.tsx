@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Copy,
   Eraser,
+  FileDown,
   Lock,
   Plus,
   Send,
@@ -207,7 +208,26 @@ export function ScheduleBoard({
           </>
         ) : null}
 
-        <div className="ms-auto flex items-center gap-2">
+        <div className="ms-auto flex flex-wrap items-center gap-2">
+          <a
+            href={`/print/schedule?team=${view.team.id}&week=${view.weekStart}`}
+            target="_blank"
+            rel="noopener"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium hover:bg-muted"
+          >
+            <FileDown className="h-4 w-4" />
+            ייצוא ל-PDF
+          </a>
+          {teams.length > 1 ? (
+            <a
+              href={`/print/schedule?team=all&week=${view.weekStart}`}
+              target="_blank"
+              rel="noopener"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-primary hover:bg-muted"
+            >
+              PDF לכל הצוותים
+            </a>
+          ) : null}
           {view.canPublish && (!view.isPast || view.canEditLocked) ? (
             view.week.status === "draft" ? (
               <Button
