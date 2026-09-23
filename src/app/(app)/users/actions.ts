@@ -1,0 +1,35 @@
+"use server";
+
+import { z } from "zod";
+import { runAction } from "@/lib/action";
+import {
+  createUser,
+  createUserSchema,
+  resetPassword,
+  updateUser,
+  updateUserSchema,
+} from "@/modules/users/service";
+
+const REVALIDATE = ["/users", "/teams"];
+const id = z.string().min(1);
+
+export async function createUserAction(input: unknown) {
+  return runAction((actor) => createUser(actor, createUserSchema.parse(input)), {
+    revalidate: REVALIDATE,
+    message: "המשתמש נוצר",
+  });
+}
+
+export async function updateUserAction(userId: string, input: unknown) {
+  return runAction((actor) => updateUser(actor, id.parse(userId), updateUserSchema.parse(input)), {
+    revalidate: REVALIDATE,
+    message: "המשתמש עודכן",
+  });
+}
+
+export async function resetPasswordAction(userId: string, password: string) {
+  return runAction((actor) => resetPassword(actor, id.parse(userId), password), {
+    revalidate: ["/users"],
+    message: "הסיסמה אופסה. המשתמש ינותק מכל המכשירים",
+  });
+}

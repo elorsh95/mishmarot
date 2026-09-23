@@ -1,36 +1,152 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# משמרות – ניהול סידור עבודה שבועי
 
-## Getting Started
+מערכת web לניהול סידור עבודה שבועי לנציגי מכירות במוקד טלפוני. ממשק בעברית מלאה (RTL), מותאם למובייל.
 
-First, run the development server:
+- **מנהלי צוותים** משבצים את הנציגים שלהם לפי שבוע: משמרת (בוקר / ערב / כפולה), מיקום עבודה, או היעדרות.
+- **חוק החריגים:** מעבר למכסה החודשית (ברירת מחדל: 2 ימים בחודש קלנדרי) לעבודה ממיקום שדורש מכסה (למשל "בית"), כל שיבוץ נוסף ממתין לאישור.
+- **מנהלת המוקד** מאשרת או דוחה (עם הערה) במסך "בקשות לאישור", צופה ועורכת את כל הצוותים.
+- **מנהל המערכת** מנהל משתמשים, תפקידים והרשאות, צוותים והגדרות.
+- נציגים אינם משתמשים במערכת.
+
+## טכנולוגיה
+
+| שכבה | בחירה |
+|---|---|
+| Framework | Next.js 16 (App Router) + TypeScript |
+| DB | Cloud Firestore (דרך Firebase Admin SDK, בצד השרת בלבד) |
+| התחברות | Firebase Authentication (שם משתמש + סיסמה, סיסמאות מנוהלות ומוצפנות ע״י Firebase), session cookie מסוג httpOnly |
+| UI | Tailwind CSS v4, רכיבים משלנו ב-`src/components/ui`, אייקונים lucide |
+| ולידציה | Zod |
+| בדיקות | Vitest (יחידה) + Firebase Emulator (אינטגרציה) |
+| אחסון | Firebase App Hosting |
+
+## הרצה מקומית
+
+דרישות: **Node.js 22**, **Java 21** (לאמולטור של Firebase).
 
 ```bash
+npm install
+cp .env.example .env.local     # מפנה את האפליקציה לאמולטור
+
+# טרמינל 1: אמולטורים של Firestore ו-Auth (הנתונים נשמרים בין הרצות ב-.emulator-data)
+npm run emulators
+
+# טרמינל 2: נתוני דמו, ואז שרת הפיתוח
+npm run seed                   # פעם אחת. להתחלה מחדש: npm run seed -- --reset
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+פותחים את http://localhost:3000. ממשק האמולטור (צפייה בנתונים) זמין ב-http://localhost:4000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### משתמשי דמו
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| שם משתמש | סיסמה | תפקיד |
+|---|---|---|
+| `admin` | `Admin1234` | מנהל מערכת |
+| `center` | `Center1234` | מנהלת מוקד |
+| `yossi` | `Team1234` | מנהל צוות רנו |
+| `michal` | `Team1234` | מנהלת צוותים ניסאן ודאצ׳יה |
 
-## Learn More
+ה-seed יוצר גם 9 צוותים, 17 נציגים, משמרות, מיקומים וסידור לשבוע הנוכחי ולשבוע הבא, כולל בקשות שממתינות לאישור.
 
-To learn more about Next.js, take a look at the following resources:
+## פקודות
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| פקודה | מה היא עושה |
+|---|---|
+| `npm run dev` | שרת פיתוח |
+| `npm run build` | בניית production |
+| `npm run lint` | ESLint, וגם בדיקה שקומפוננטות צד לקוח לא מייבאות קוד שרת |
+| `npm run typecheck` | TypeScript |
+| `npm test` | בדיקות יחידה (חוק המכסה, הרשאות) |
+| `npm run test:integration` | בדיקות אינטגרציה מול אמולטור שמופעל אוטומטית (שיבוץ, אישורים, נעילות, העברות) |
+| `npm run bootstrap` | הקמה ראשונית של פרויקט Firebase אמיתי (ראו למטה) |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## מבנה הפרויקט
 
-## Deploy on Vercel
+```
+src/
+  app/
+    (auth)/login/          התחברות
+    (app)/                 כל המסכים אחרי התחברות (layout עם תפריט לפי הרשאות)
+      schedule/  approvals/  agents/  transfers/
+      teams/  users/  roles/  settings/  audit/  account/
+  components/
+    ui/                    רכיבי UI משותפים (Button, Dialog, Field…)
+    layout/                מעטפת האפליקציה ורשימת התפריט (nav-items.ts)
+  lib/                     תשתית: firebase, תאריכים, שגיאות, runAction, events
+  modules/                 הלוגיקה העסקית, מודול לכל תחום
+    permissions/           קטלוג ההרשאות ובדיקות (can / canForTeam / teamScope)
+    schedule/              engine.ts (כל שינוי בסידור), quota.ts (חוק המכסה), service.ts
+    approvals/  agents/  transfers/  teams/  users/  roles/  catalog/  settings/  audit/  auth/
+scripts/                   seed, bootstrap
+firestore.rules            חסימת גישה ישירה מהדפדפן (כל הגישה דרך השרת)
+firestore.indexes.json     אינדקסים מורכבים
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**עקרונות:**
+- **שכבת ה-services היא מקור האמת.** כל service מקבל את המשתמש המבצע (`actor`) ובודק הרשאה בעצמו. דפים ו-actions הם שכבה דקה מעליו. דוחות, ייצוא וממשקי API עתידיים יקראו לאותם services.
+- **הרשאות:** הקוד בודק מפתח הרשאה (למשל `schedule.edit`). איזה תפקיד מחזיק איזו הרשאה, ובאיזה היקף ("כל הצוותים" או "הצוותים שלו בלבד"), נשמר ב-DB וניתן לעריכה במסך "תפקידים והרשאות".
+- **כל שינוי בסידור** עובר דרך `applyChanges` ב-`modules/schedule/engine.ts`, בטרנזקציה אחת: בדיקת הרשאה ונעילות, כתיבה, חישוב מחדש של חוק המכסה לכל נציג וחודש שהושפעו, פתיחה או ביטול של בקשות אישור, ורישום בלוג.
+- **לוג פעולות** נכתב באותה טרנזקציה של השינוי (`auditInTx`).
+- **אירועים** (`lib/events.ts`): למשל `approval.requested` או `week.published`. זו נקודת החיבור להתראות עתידיות, בלי לגעת בלוגיקה.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### חוק המכסה (עבודה מהבית)
+
+- לכל מיקום עבודה יש סימון "דורש מכסה" (כברירת מחדל רק "בית").
+- הספירה נעשית לכל נציג, בחודש קלנדרי (מה-1 עד סוף החודש), לפי **סדר התאריכים** ולא לפי סדר ההזנה.
+- המכסה של נציג היא המכסה האישית שלו, אם הוגדרה, ואחרת ברירת המחדל מההגדרות (2).
+- ימים 1 עד N נספרים "במסגרת המכסה". מהיום ה-N+1 והלאה השיבוץ "ממתין לאישור" ונפתחת בקשה.
+- יום שנדחה לא נספר, ונשאר בסידור מסומן באדום עד שמנהל הצוות משנה אותו. יום שאושר נשאר מאושר.
+- אם מוחקים או משנים יום מוקדם יותר, בקשה שנכנסת בחזרה למכסה נסגרת אוטומטית. כל זה נרשם בלוג.
+- שינוי מכסה של נציג מחשב מחדש את החודש הנוכחי ואת החודשים הבאים.
+
+### נעילות ופרסום
+
+- שבוע שעבר נעול לעריכה. רק מי שמחזיק בהרשאה `schedule.editLocked` (מנהל מערכת ומנהלת מוקד) יכול לערוך אותו.
+- סידור שפורסם נעול למנהל הצוות עד שהוא מחזיר אותו ל"טיוטה". מנהלת המוקד יכולה לערוך גם סידור שפורסם.
+
+### העברת נציג בין צוותים
+
+מנהל הצוות המקבל שולח בקשה ממסך "העברות נציגים", ומנהל הצוות הנוכחי של הנציג מאשר. באישור, השיבוצים מהיום והלאה עוברים עם הנציג, וההיסטוריה נשארת בצוות הקודם. מנהל מערכת ומנהלת מוקד יכולים גם להעביר ישירות ממסך הנציגים.
+
+## סביבות ופריסה
+
+| Branch | סביבה | פרויקט Firebase |
+|---|---|---|
+| `dev` | פיתוח ובדיקות | `mishmarot-dev` |
+| `main` | production | `mishmarot-prod` |
+
+**תהליך העבודה:** פיתוח ב-branch נפרד, ואז PR אל `dev`. אחרי merge, App Hosting פורס אוטומטית לסביבת dev ובודקים שם. אחרי אישור פותחים PR מ-`dev` אל `main`, ובסיום ה-merge הגרסה עולה ל-production.
+
+GitHub Actions (`.github/workflows/ci.yml`) מריץ בכל PR את lint, typecheck, בדיקות יחידה, בדיקות אינטגרציה ו-build. ב-push ל-`dev` או ל-`main` הוא גם פורס את כללי האבטחה והאינדקסים של Firestore לפרויקט המתאים.
+
+## מדריך הקמה ב-Firebase (פעם אחת לכל סביבה)
+
+חוזרים על השלבים פעמיים: פעם ל-`mishmarot-dev` ופעם ל-`mishmarot-prod`.
+
+1. **יצירת פרויקט:** ב-[Firebase Console](https://console.firebase.google.com) ← Add project. אם השם `mishmarot-dev` תפוס, Firebase יציע מזהה אחר. במקרה כזה עדכנו את המזהה בקובץ `.firebaserc`.
+2. **תוכנית Blaze:** ⚙️ ← Usage and billing ← Blaze. App Hosting דורש חיבור כרטיס אשראי. בהיקף של מוקד העלות צפויה להיות אפסית או קרובה לאפס. מומלץ להגדיר תקציב והתראה ב-Google Cloud Billing.
+3. **Firestore:** Build ← Firestore Database ← Create database. בוחרים מיקום (למשל `europe-west1` או `me-west1` תל אביב) ומצב **Production**.
+4. **Authentication:** Build ← Authentication ← Get started ← Sign-in method ← מפעילים **Email/Password**. המערכת משתמשת בו מאחורי הקלעים עבור שם משתמש וסיסמה.
+5. **Web API Key:** ⚙️ Project settings ← General ← מעתיקים את **Web API Key** ומדביקים בקובץ `apphosting.dev.yaml` (או `apphosting.prod.yaml`) במקום `REPLACE_WITH_...`. זה מזהה ציבורי, לא סוד.
+6. **App Hosting:** Build ← App Hosting ← Create backend:
+   - מחברים את GitHub ובוחרים את הריפו `elorsh95/mishmarot`.
+   - Root directory: `/`. Live branch: `dev` בפרויקט ה-dev, או `main` בפרויקט ה-prod.
+   - מפעילים **Automatic rollouts**.
+   - אחרי היצירה: Backend ← Settings ← Environment ← **Environment name**: `dev` או `prod`, בהתאמה.
+7. **Service account ל-GitHub Actions:** ⚙️ Project settings ← Service accounts ← Generate new private key. ב-GitHub: Settings ← Secrets and variables ← Actions ← New repository secret בשם `FIREBASE_SERVICE_ACCOUNT_DEV` (או `FIREBASE_SERVICE_ACCOUNT_PROD`), ומדביקים את כל תוכן קובץ ה-JSON. **אל תשמרו את הקובץ בריפו.**
+8. **הקמת נתוני בסיס ומשתמש מנהל ראשון** (מהמחשב שלכם, עם אותו קובץ JSON):
+   ```bash
+   GOOGLE_APPLICATION_CREDENTIALS=./service-account.json FIREBASE_PROJECT_ID=mishmarot-dev \
+     npm run bootstrap -- --username admin --name "השם שלך" --password "סיסמה-חזקה1"
+   ```
+   הפקודה יוצרת תפקידים, הגדרות, משמרות (בוקר, ערב, כפולה), מיקומים (מוקד, בית), סוגי היעדרות, 9 צוותים ואת משתמש המנהל. אפשר להריץ אותה שוב בבטחה.
+9. **Firestore indexes:** נפרסים אוטומטית ב-push הראשון ל-`dev`/`main` (שלב 7). אפשר גם ידנית: `npx firebase deploy --only firestore --project dev`.
+
+## הוספת פיצ'רים בעתיד
+
+- **מסך חדש:** תיקייה ב-`src/app/(app)/<route>` עם `page.tsx` ו-`actions.ts`, ופריט ב-`src/components/layout/nav-items.ts`.
+- **הרשאה חדשה:** מוסיפים מפתח ב-`src/modules/permissions/catalog.ts`, בודקים אותו ב-service, ומעניקים אותה לתפקידים במסך "תפקידים והרשאות".
+- **הגדרה חדשה:** שדה עם ברירת מחדל ב-`settingsSchema` (`src/modules/settings/service.ts`). בלי migration.
+- **התראות:** מאזינים לאירועים ב-`src/lib/events.ts`.
+- **דוחות וייצוא לאקסל:** קוראים ל-services הקיימים. הנתונים כבר מנורמלים לפי תאריך, חודש, צוות ונציג.

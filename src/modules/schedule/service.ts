@@ -1,5 +1,12 @@
 import { db } from "@/lib/firebase/admin";
-import { col, COLLECTIONS, fromDoc, fromDocOrNull, serverNow } from "@/lib/firebase/collections";
+import {
+  chunk,
+  col,
+  COLLECTIONS,
+  fromDoc,
+  fromDocOrNull,
+  serverNow,
+} from "@/lib/firebase/collections";
 import {
   addDays,
   formatWeekRange,
@@ -16,7 +23,7 @@ import { emit } from "@/lib/events";
 import { agentName, type Agent } from "@/modules/agents/types";
 import { auditInTx } from "@/modules/audit/service";
 import { getCatalog } from "@/modules/catalog/service";
-import { assertCanForTeam, canForTeam, type Actor } from "@/modules/permissions/check";
+import { assertCanForTeam, canForTeam, teamScope, type Actor } from "@/modules/permissions/check";
 import { getSettings } from "@/modules/settings/service";
 import { getTeam, type Team } from "@/modules/teams/service";
 import { applyChanges, type ApplyResult } from "./engine";
@@ -48,12 +55,22 @@ export interface WeekView {
   assignments: Record<string, Assignment>;
   week: WeekSchedule;
   quotaUsage: Record<string, QuotaUsage[]>;
+  /** Decision details for entries that went through approval, keyed by approval id. */
+  approvals: Record<string, ApprovalInfo>;
   isPast: boolean;
   canEdit: boolean;
   canPublish: boolean;
   canEditLocked: boolean;
   /** Why editing is blocked for this actor, if it is. */
   lockReason: string | null;
+}
+
+export interface ApprovalInfo {
+  status: string;
+  position: number;
+  quota: number;
+  decidedByName: string | null;
+  decisionNote: string;
 }
 
 export async function getWeek(teamId: string, weekStart: IsoDate): Promise<WeekSchedule> {
@@ -143,6 +160,23 @@ export async function getWeekView(
     });
   }
 
+  const approvalIds = [
+    ...new Set(Object.values(assignments).flatMap((a) => (a.approvalId ? [a.approvalId] : []))),
+  ];
+  const approvals: Record<string, ApprovalInfo> = {};
+  if (approvalIds.length > 0) {
+    const snaps = await db().getAll(...approvalIds.map((id) => col(COLLECTIONS.approvals).doc(id)));
+    for (const s of snaps.filter((x) => x.exists)) {
+      approvals[s.id] = {
+        status: String(s.get("status")),
+        position: Number(s.get("position") ?? 0),
+        quota: Number(s.get("quota") ?? 0),
+        decidedByName: (s.get("decidedByName") as string | null) ?? null,
+        decisionNote: String(s.get("decisionNote") ?? ""),
+      };
+    }
+  }
+
   const isPast = isPastWeek(weekStart, today);
   const canEdit = canForTeam(actor, "schedule.edit", teamId);
   const canEditLocked = canForTeam(actor, "schedule.editLocked", teamId);
@@ -163,6 +197,7 @@ export async function getWeekView(
     assignments,
     week,
     quotaUsage,
+    approvals,
     isPast,
     canEdit,
     canPublish: canForTeam(actor, "schedule.publish", teamId),
@@ -312,4 +347,27 @@ export async function clearWeek(actor: Actor, teamId: string, weekStartInput: Is
   }));
   if (ops.length === 0) return { changed: 0, skipped: [], pendingApprovalIds: [] };
   return applyChanges(actor, ops, { mode: "bulk" });
+}
+
+/** Upcoming entries rejected by the center manager, in the teams the actor edits. */
+export async function listUpcomingRejected(
+  actor: Actor,
+  today: IsoDate,
+): Promise<Array<{ entry: Assignment; agent: Agent | undefined }>> {
+  const scope = teamScope(actor, "schedule.edit");
+  if (scope !== "all" && scope.length === 0) return [];
+  const base = col(COLLECTIONS.assignments)
+    .where("quotaStatus", "==", "rejected")
+    .where("date", ">=", today);
+  const queries =
+    scope === "all" ? [base] : chunk(scope).map((ids) => base.where("teamId", "in", ids));
+  const snaps = await Promise.all(queries.map((q) => q.orderBy("date").limit(50).get()));
+  const entries = snaps.flatMap((s) => s.docs.map((d) => fromDoc<Assignment>(d)));
+  if (entries.length === 0) return [];
+  const agentIds = [...new Set(entries.map((e) => e.agentId))];
+  const agentSnaps = await db().getAll(...agentIds.map((id) => col(COLLECTIONS.agents).doc(id)));
+  const agents = new Map(agentSnaps.filter((d) => d.exists).map((d) => [d.id, fromDoc<Agent>(d)]));
+  return entries
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((entry) => ({ entry, agent: agents.get(entry.agentId) }));
 }

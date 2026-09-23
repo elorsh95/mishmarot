@@ -128,3 +128,36 @@ export function setManagedTeamsInTx(
     });
   }
 }
+
+/** The company's lines of business. Created by bootstrap/seed when there are no teams yet. */
+export const DEFAULT_TEAM_NAMES = [
+  "רנו",
+  "ניסאן",
+  "דאצ׳יה",
+  "צ׳רי",
+  "אקספנג",
+  "רכב משומש",
+  "ליסינג",
+  "השכרה",
+  "דיגיטל",
+];
+
+export async function ensureDefaultTeams(): Promise<Team[]> {
+  const existing = await col(COLLECTIONS.teams).limit(1).get();
+  if (existing.empty) {
+    const batch = db().batch();
+    DEFAULT_TEAM_NAMES.forEach((name, i) => {
+      batch.set(col(COLLECTIONS.teams).doc(), {
+        name,
+        isActive: true,
+        managerIds: [],
+        sortOrder: i + 1,
+        createdAt: serverNow(),
+        updatedAt: serverNow(),
+      });
+    });
+    await batch.commit();
+  }
+  const snap = await col(COLLECTIONS.teams).get();
+  return snap.docs.map((d) => fromDoc<Team>(d));
+}

@@ -62,19 +62,21 @@ export type LoginResult = { ok: true } | { ok: false; error: string };
 
 export async function login(username: string, password: string): Promise<LoginResult> {
   const invalid = { ok: false as const, error: "שם משתמש או סיסמה שגויים" };
+  const disabled = { ok: false as const, error: "המשתמש מושבת. יש לפנות למנהל המערכת" };
   const user = await findUserByUsername(username);
   if (!user) return invalid;
-  if (!user.isActive) return { ok: false, error: "המשתמש מושבת. יש לפנות למנהל המערכת" };
 
+  // The password is checked before revealing that an account is disabled.
   const result = await signInWithPassword(authEmailFor(user.id), password);
   if (!result.ok) {
     if (result.reason === "too_many_attempts") {
       return { ok: false, error: "בוצעו יותר מדי ניסיונות. יש לנסות שוב בעוד כמה דקות" };
     }
-    if (result.reason === "disabled") return { ok: false, error: "המשתמש מושבת" };
+    if (result.reason === "disabled") return disabled;
     if (result.reason === "unknown") return { ok: false, error: "שגיאה בהתחברות. נסו שוב" };
     return invalid;
   }
+  if (!user.isActive) return disabled;
 
   const expiresIn = SESSION_DAYS * 24 * 60 * 60 * 1000;
   const sessionCookie = await adminAuth().createSessionCookie(result.idToken, { expiresIn });

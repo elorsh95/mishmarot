@@ -9,46 +9,14 @@ import { agentName, type Agent } from "@/modules/agents/types";
 import { auditInTx } from "@/modules/audit/service";
 import { canForTeam, teamScope, type Actor } from "@/modules/permissions/check";
 import { listAllTeams } from "@/modules/teams/service";
+import type { AgentBrief, TransferRequest } from "./types";
 
 /**
  * Moving an agent between teams: the manager of the destination team asks, the manager of the
  * agent's current team approves. Users with an "all" scope (admin, center manager) may decide any.
  */
 
-export type TransferStatus = "pending" | "approved" | "rejected" | "cancelled";
-
-export interface TransferRequest {
-  id: string;
-  agentId: string;
-  agentName: string;
-  employeeNumber: string;
-  fromTeamId: string;
-  toTeamId: string;
-  status: TransferStatus;
-  note: string;
-  requestedBy: string;
-  requestedByName: string;
-  decidedBy: string | null;
-  decidedByName: string | null;
-  decisionNote: string;
-  decidedAt: string | null;
-  createdAt: string;
-}
-
-export const TRANSFER_STATUS_LABELS: Record<TransferStatus, string> = {
-  pending: "ממתינה",
-  approved: "אושרה",
-  rejected: "נדחתה",
-  cancelled: "בוטלה",
-};
-
-export interface AgentBrief {
-  id: string;
-  name: string;
-  employeeNumber: string;
-  teamId: string;
-  teamName: string;
-}
+export * from "./types";
 
 /** Active agents outside the actor's teams, for picking whom to request. */
 export async function listTransferCandidates(actor: Actor): Promise<AgentBrief[]> {

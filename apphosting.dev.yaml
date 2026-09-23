@@ -1,0 +1,8 @@
+# App Hosting environment "dev". Set the backend's "Environment name" to "dev".
+env:
+  # Web API key of the dev Firebase project (Project settings → General → Web API Key).
+  # It is not a secret: it only identifies the project for password sign-in.
+  - variable: FIREBASE_API_KEY
+    value: "REPLACE_WITH_DEV_WEB_API_KEY"
+    availability:
+      - RUNTIME

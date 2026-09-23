@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run build
+        env:
+          FIREBASE_PROJECT_ID: demo-mishmarot
+
+  # Deploys Firestore security rules and indexes. The app itself is deployed by
+  # Firebase App Hosting, which builds automatically from the branch linked to each backend.
+  deploy-firestore:
+    needs: checks
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Deploy rules and indexes
+        env:
+          SERVICE_ACCOUNT: ${{ github.ref_name == 'main' && secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+          PROJECT_ALIAS: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+        run: |
+          if [ -z "$SERVICE_ACCOUNT" ]; then
+            echo "::warning::No service account secret configured for $PROJECT_ALIAS; skipping Firestore deploy."
+            exit 0
+          fi
+          echo "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx firebase deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ALIAS" --non-interactive
