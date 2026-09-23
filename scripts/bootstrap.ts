@@ -5,7 +5,8 @@
  *   GOOGLE_APPLICATION_CREDENTIALS=./service-account.json FIREBASE_PROJECT_ID=mishmarot-dev \
  *     npm run bootstrap -- --username admin --name "שם מלא" --password "..."
  *
- * Safe to run again: existing data is kept.
+ * The admin can also come from BOOTSTRAP_ADMIN_USERNAME / BOOTSTRAP_ADMIN_NAME /
+ * BOOTSTRAP_ADMIN_PASSWORD (used by CI on deploy). Safe to run again: existing data is kept.
  */
 import { parseArgs } from "node:util";
 import { isEmulator } from "@/lib/firebase/admin";
@@ -21,6 +22,9 @@ async function main() {
       password: { type: "string" },
     },
   });
+  values.username ??= process.env.BOOTSTRAP_ADMIN_USERNAME || undefined;
+  values.name ??= process.env.BOOTSTRAP_ADMIN_NAME || undefined;
+  values.password ??= process.env.BOOTSTRAP_ADMIN_PASSWORD || undefined;
   if (!process.env.FIREBASE_PROJECT_ID) throw new Error("FIREBASE_PROJECT_ID is required");
   console.log(
     `Bootstrapping project ${process.env.FIREBASE_PROJECT_ID}${isEmulator() ? " (emulator)" : ""}`,

@@ -27,13 +27,16 @@ jobs:
         env:
           FIREBASE_PROJECT_ID: demo-mishmarot
 
-  # Deploys Firestore security rules and indexes. The app itself is deployed by
-  # Firebase App Hosting, which builds automatically from the branch linked to each backend.
+  # Deploys Firestore security rules and indexes, then creates base data (roles, settings,
+  # shifts, locations, teams) and the first admin user if missing. Idempotent.
+  # The app itself is deployed by Firebase App Hosting from the branch linked to each backend.
   deploy-firestore:
     needs: checks
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
+    env:
+      SERVICE_ACCOUNT: ${{ github.ref_name == 'main' && secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+      PROJECT_ALIAS: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,15 +44,24 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Deploy rules and indexes
-        env:
-          SERVICE_ACCOUNT: ${{ github.ref_name == 'main' && secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
-          PROJECT_ALIAS: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+      - name: Prepare credentials
+        id: creds
         run: |
           if [ -z "$SERVICE_ACCOUNT" ]; then
             echo "::warning::No service account secret configured for $PROJECT_ALIAS; skipping Firestore deploy."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
-          npx firebase deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ALIAS" --non-interactive
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+          echo "FIREBASE_PROJECT_ID=$(node -p "require('./.firebaserc').projects['$PROJECT_ALIAS']")" >> "$GITHUB_ENV"
+      - name: Deploy rules and indexes
+        if: steps.creds.outputs.skip != 'true'
+        run: npx firebase deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ALIAS" --non-interactive
+      - name: Base data and first admin
+        if: steps.creds.outputs.skip != 'true'
+        env:
+          BOOTSTRAP_ADMIN_USERNAME: ${{ secrets.BOOTSTRAP_ADMIN_USERNAME }}
+          BOOTSTRAP_ADMIN_NAME: ${{ secrets.BOOTSTRAP_ADMIN_NAME }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+        run: npm run bootstrap

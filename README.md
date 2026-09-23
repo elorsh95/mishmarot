@@ -135,12 +135,11 @@ GitHub Actions (`.github/workflows/ci.yml`) מריץ בכל PR את lint, typech
    - מפעילים **Automatic rollouts**.
    - אחרי היצירה: Backend ← Settings ← Environment ← **Environment name**: `dev` או `prod`, בהתאמה.
 7. **Service account ל-GitHub Actions:** ⚙️ Project settings ← Service accounts ← Generate new private key. ב-GitHub: Settings ← Secrets and variables ← Actions ← New repository secret בשם `FIREBASE_SERVICE_ACCOUNT_DEV` (או `FIREBASE_SERVICE_ACCOUNT_PROD`), ומדביקים את כל תוכן קובץ ה-JSON. **אל תשמרו את הקובץ בריפו.**
-8. **הקמת נתוני בסיס ומשתמש מנהל ראשון** (מהמחשב שלכם, עם אותו קובץ JSON):
+8. **הקמת נתוני בסיס ומשתמש מנהל ראשון:** מתבצעת אוטומטית ב-GitHub Actions בכל push ל-`dev`/`main`, יחד עם פריסת הכללים והאינדקסים. כדי שייווצר משתמש מנהל, מוסיפים ב-GitHub את ה-secrets `BOOTSTRAP_ADMIN_USERNAME`, `BOOTSTRAP_ADMIN_NAME` ו-`BOOTSTRAP_ADMIN_PASSWORD`. אם המשתמש כבר קיים, השלב מדלג עליו. אפשר גם להריץ ידנית מהמחשב:
    ```bash
    GOOGLE_APPLICATION_CREDENTIALS=./service-account.json FIREBASE_PROJECT_ID=mishmarot-dev-cea4a \
      npm run bootstrap -- --username admin --name "השם שלך" --password "סיסמה-חזקה1"
    ```
-   הפקודה יוצרת תפקידים, הגדרות, משמרות (בוקר, ערב, כפולה), מיקומים (מוקד, בית), סוגי היעדרות, 9 צוותים ואת משתמש המנהל. אפשר להריץ אותה שוב בבטחה.
 9. **Firestore indexes:** נפרסים אוטומטית ב-push הראשון ל-`dev`/`main` (שלב 7). אפשר גם ידנית: `npx firebase deploy --only firestore --project dev`.
 
 ## הוספת פיצ'רים בעתיד
