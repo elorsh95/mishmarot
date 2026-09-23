@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint && node scripts/check-client-imports.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "format": "prettier --write .",
     "emulators": "firebase emulators:start --project demo-mishmarot --import=.emulator-data --export-on-exit",
     "seed": "tsx --env-file=.env.local scripts/seed.ts",
