@@ -1,10 +1,9 @@
 /**
  * Configures Firebase Authentication e-mails for a real project (used by CI on deploy):
  * - adds the app's domain to the authorized domains,
- * - points e-mail links at the app's own page (/auth/action) instead of Firebase's default one.
- *
- * The e-mail text itself can't be changed through the API on this project
- * (EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED), so Firebase's built-in Hebrew template is used.
+ * - points e-mail links at the app's own page (/auth/action) instead of Firebase's default one,
+ *   when the project allows it (some projects answer EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED;
+ *   the step then only warns). The e-mail text is Firebase's built-in Hebrew template.
  *
  *   GOOGLE_APPLICATION_CREDENTIALS=./service-account.json FIREBASE_PROJECT_ID=mishmarot-dev \
  *     APP_URL=https://... npm run configure-auth
@@ -33,21 +32,29 @@ async function main() {
   const config = (await current.json()) as Config;
   const domains = config.authorizedDomains ?? [];
 
-  const updateMask = "authorizedDomains,notification.sendEmail.callbackUri";
-  const res = await fetch(`${url}?updateMask=${updateMask}`, {
-    method: "PATCH",
-    headers,
-    body: JSON.stringify({
-      authorizedDomains: domains.includes(domain) ? domains : [...domains, domain],
-      notification: {
-        sendEmail: {
-          callbackUri: `${appUrl}/auth/action`,
-        },
-      },
-    }),
+  const patch = (mask: string, body: object) =>
+    fetch(`${url}?updateMask=${mask}`, { method: "PATCH", headers, body: JSON.stringify(body) });
+
+  if (!domains.includes(domain)) {
+    const res = await patch("authorizedDomains", { authorizedDomains: [...domains, domain] });
+    if (!res.ok) throw new Error(`Adding ${domain} failed: ${res.status} ${await res.text()}`);
+  }
+  console.log(`${domain} is an authorized domain of ${projectId}`);
+
+  const res = await patch("notification.sendEmail.callbackUri", {
+    notification: { sendEmail: { callbackUri: `${appUrl}/auth/action` } },
   });
-  if (!res.ok) throw new Error(`Updating auth config failed: ${res.status} ${await res.text()}`);
-  console.log(`Auth e-mails of ${projectId} now link to ${appUrl}/auth/action`);
+  if (res.ok) {
+    console.log(`Auth e-mails now link to ${appUrl}/auth/action`);
+  } else {
+    const text = await res.text();
+    if (!text.includes("EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED")) {
+      throw new Error(`Setting the e-mail link failed: ${res.status} ${text}`);
+    }
+    // Firebase locks e-mail settings on some projects. Links then open Firebase's own page,
+    // which returns to the login page through the continue URL (see sendPasswordSetupEmail).
+    console.log("::warning::Firebase doesn't allow changing the e-mail link on this project; using its default page.");
+  }
 }
 
 main().catch((err) => {

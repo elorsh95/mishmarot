@@ -76,13 +76,22 @@ async function identityToolkit<T>(
 /**
  * Has Firebase e-mail a "set your password" link (the password-reset template, in Hebrew).
  * Used both for invitations and for "forgot password". Links are valid for one hour.
+ * When the link opens Firebase's own page, its "continue" button returns to our login page (APP_URL).
  */
 export async function sendPasswordSetupEmail(email: string): Promise<boolean> {
-  const result = await identityToolkit(
-    "accounts:sendOobCode",
-    { requestType: "PASSWORD_RESET", email },
-    { "X-Firebase-Locale": "he" },
-  );
+  const send = (extra: object) =>
+    identityToolkit(
+      "accounts:sendOobCode",
+      { requestType: "PASSWORD_RESET", email, ...extra },
+      { "X-Firebase-Locale": "he" },
+    );
+  const appUrl = process.env.APP_URL?.replace(/\/+$/, "");
+  let result = await send(appUrl ? { continueUrl: `${appUrl}/login` } : {});
+  if (!result.ok && appUrl && /UNAUTHORIZED_DOMAIN|INVALID_CONTINUE_URI/.test(result.message)) {
+    // A continue URL on a domain Firebase doesn't know must not block the e-mail itself.
+    console.error("continueUrl rejected, sending without it", result.message);
+    result = await send({});
+  }
   if (!result.ok) console.error("sendOobCode failed", result.message);
   return result.ok;
 }
