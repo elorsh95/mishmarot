@@ -4,6 +4,7 @@ import { z } from "zod";
 import { runAction } from "@/lib/action";
 import {
   createUserSchema,
+  deleteUser,
   inviteUser,
   resetPassword,
   sendPasswordLink,
@@ -42,5 +43,12 @@ export async function resetPasswordAction(userId: string, password: string) {
   return runAction((actor) => resetPassword(actor, id.parse(userId), password), {
     revalidate: ["/users"],
     message: "הסיסמה אופסה. המשתמש ינותק מכל המכשירים",
+  });
+}
+
+export async function deleteUserAction(userId: string) {
+  return runAction((actor) => deleteUser(actor, id.parse(userId)), {
+    revalidate: REVALIDATE,
+    message: "המשתמש נמחק",
   });
 }

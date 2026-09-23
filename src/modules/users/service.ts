@@ -10,6 +10,7 @@ import { col, COLLECTIONS, fromDoc, fromDocOrNull, serverNow } from "@/lib/fireb
 import { DomainError, NotFoundError } from "@/lib/errors";
 import { auditInTx } from "@/modules/audit/service";
 import { assertCan, type Actor } from "@/modules/permissions/check";
+import { SYSTEM_ROLE_IDS } from "@/modules/permissions/catalog";
 import { getRole } from "@/modules/roles/service";
 import { listAllTeams, setManagedTeamsInTx } from "@/modules/teams/service";
 
@@ -273,6 +274,58 @@ export async function updateUser(
 
   await adminAuth().updateUser(userId, { disabled: !data.isActive, displayName: data.fullName });
   if (deactivated) await adminAuth().revokeRefreshTokens(userId);
+}
+
+/**
+ * Deletes a user for good: the sign-in account, the user record and its team-manager assignments.
+ * History stays readable because audit entries, approvals and transfers keep the names they were written with.
+ * Use deactivation instead to keep the user around.
+ */
+export async function deleteUser(actor: Actor, userId: string) {
+  assertCan(actor, "users.manage");
+  if (userId === actor.id) throw new DomainError("לא ניתן למחוק את המשתמש שלך");
+  const ref = col(COLLECTIONS.users).doc(userId);
+  const user = await getUser(userId);
+  if (!user) throw new NotFoundError("המשתמש לא נמצא");
+  if (user.roleId === SYSTEM_ROLE_IDS.admin && user.isActive) {
+    const admins = await col(COLLECTIONS.users)
+      .where("roleId", "==", SYSTEM_ROLE_IDS.admin)
+      .where("isActive", "==", true)
+      .limit(2)
+      .get();
+    if (admins.size < 2) throw new DomainError("לא ניתן למחוק את מנהל המערכת הפעיל האחרון");
+  }
+  const currentTeams = (await listAllTeams())
+    .filter((t) => t.managerIds.includes(userId))
+    .map((t) => t.id);
+
+  await db().runTransaction(async (tx) => {
+    if (!(await tx.get(ref)).exists) throw new NotFoundError("המשתמש לא נמצא");
+    setManagedTeamsInTx(tx, userId, currentTeams, []);
+    tx.delete(ref);
+    auditInTx(tx, actor, {
+      action: "user.delete",
+      entityType: "user",
+      entityId: userId,
+      summary: `נמחק משתמש "${user.fullName}" (${user.username})`,
+      before: {
+        username: user.username,
+        fullName: user.fullName,
+        email: user.email ?? null,
+        roleId: user.roleId,
+        isActive: user.isActive,
+        managedTeamIds: currentTeams,
+      },
+    });
+  });
+
+  // Without the user record the account can no longer sign in or keep a session,
+  // so a failure here only leaves an unusable Auth account behind.
+  await adminAuth()
+    .deleteUser(userId)
+    .catch((err: { code?: string }) => {
+      if (err.code !== "auth/user-not-found") console.error("deleting auth user failed", err);
+    });
 }
 
 export async function resetPassword(actor: Actor, userId: string, password: string) {

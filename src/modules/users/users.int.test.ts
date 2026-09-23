@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { adminAuth } from "@/lib/firebase/admin";
 import { signInWithPassword } from "@/lib/firebase/auth-rest";
-import { actors, baseData, clearEmulator } from "@/test/helpers";
+import { col, COLLECTIONS } from "@/lib/firebase/collections";
+import { actors, baseData, clearEmulator, createTeamDoc } from "@/test/helpers";
 import {
   checkPasswordLink,
   completePasswordSetup,
+  createUserUnchecked,
+  deleteUser,
   findUserByUsername,
   getUser,
   inviteUser,
@@ -116,5 +119,40 @@ describe("user invitations", () => {
     const [code] = await sentLinks("dana.levi@example.com");
     await completePasswordSetup(code, "Newpass123");
     expect((await signInWithPassword("dana.levi@example.com", "Newpass123")).ok).toBe(true);
+  });
+});
+
+describe("deleting users", () => {
+  it("removes the account, the record and team assignments, and frees the username", async () => {
+    await createTeamDoc("renault", "רנו");
+    const { userId } = await inviteUser(actors.admin(), {
+      ...invite,
+      roleId: "team_manager",
+      managedTeamIds: ["renault"],
+    });
+    await deleteUser(actors.admin(), userId);
+
+    expect(await getUser(userId)).toBeNull();
+    await expect(adminAuth().getUser(userId)).rejects.toMatchObject({ code: "auth/user-not-found" });
+    expect((await col(COLLECTIONS.teams).doc("renault").get()).get("managerIds")).toEqual([]);
+    const audit = await col(COLLECTIONS.auditLogs).where("action", "==", "user.delete").get();
+    expect(audit.size).toBe(1);
+
+    // The same username and e-mail can be used again
+    await inviteUser(actors.admin(), invite);
+  });
+
+  it("can't delete yourself or the last active admin, and needs permission", async () => {
+    const adminId = await createUserUnchecked({
+      username: "boss",
+      fullName: "מנהל",
+      roleId: "admin",
+      password: "Secret123",
+    });
+    const { userId } = await inviteUser(actors.admin(), invite);
+    await expect(deleteUser({ ...actors.admin(), id: userId }, userId)).rejects.toThrow(/שלך/);
+    await expect(deleteUser(actors.admin(), adminId)).rejects.toThrow(/האחרון/);
+    await expect(deleteUser(actors.centerManager(), userId)).rejects.toThrow(/הרשאה/);
+    expect(await getUser(adminId)).not.toBeNull();
   });
 });

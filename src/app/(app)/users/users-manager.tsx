@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, Mail, Pencil, Plus } from "lucide-react";
+import { KeyRound, Mail, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,12 +11,19 @@ import { useAction } from "@/components/ui/use-action";
 import { formatDateTime } from "@/lib/dates";
 import type { UserListItem } from "@/modules/users/service";
 import { sendPasswordLinkAction } from "./actions";
-import { ResetPasswordDialog, UserDialog, type RoleOption, type TeamOption } from "./user-dialogs";
+import {
+  DeleteUserDialog,
+  ResetPasswordDialog,
+  UserDialog,
+  type RoleOption,
+  type TeamOption,
+} from "./user-dialogs";
 
 type Dialogs =
   | { kind: "create" }
   | { kind: "edit"; user: UserListItem }
   | { kind: "password"; user: UserListItem }
+  | { kind: "delete"; user: UserListItem }
   | null;
 
 export function UsersManager({
@@ -50,6 +57,7 @@ export function UsersManager({
       onEdit={() => setDialog({ kind: "edit", user: u })}
       onPassword={() => setDialog({ kind: "password", user: u })}
       onSendLink={() => sendLink(u)}
+      onDelete={u.id === currentUserId ? undefined : () => setDialog({ kind: "delete", user: u })}
     />
   );
 
@@ -150,6 +158,7 @@ export function UsersManager({
       {dialog?.kind === "password" ? (
         <ResetPasswordDialog user={dialog.user} onClose={close} />
       ) : null}
+      {dialog?.kind === "delete" ? <DeleteUserDialog user={dialog.user} onClose={close} /> : null}
     </>
   );
 }
@@ -166,12 +175,15 @@ function RowActions({
   onEdit,
   onPassword,
   onSendLink,
+  onDelete,
 }: {
   user: UserListItem;
   busy: boolean;
   onEdit: () => void;
   onPassword: () => void;
   onSendLink: () => void;
+  /** Absent for the signed-in user, who can't delete themselves. */
+  onDelete?: () => void;
 }) {
   const invite = !user.passwordSetAt && !user.lastLoginAt;
   const linkLabel = invite ? "שליחת ההזמנה מחדש" : "שליחת קישור לאיפוס סיסמה";
@@ -201,6 +213,18 @@ function RowActions({
       <Button variant="ghost" size="icon" aria-label="עריכה" title="עריכה" onClick={onEdit}>
         <Pencil className="h-4 w-4" />
       </Button>
+      {onDelete ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-danger"
+          aria-label="מחיקה"
+          title="מחיקה"
+          onClick={onDelete}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      ) : null}
     </div>
   );
 }
