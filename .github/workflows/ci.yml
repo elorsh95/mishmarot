@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run build
+        env:
+          FIREBASE_PROJECT_ID: demo-mishmarot
+
+  # Deploys Firestore security rules and indexes, then creates base data (roles, settings,
+  # shifts, locations, teams) and the first admin user if missing. Idempotent.
+  # The app itself is deployed by Firebase App Hosting from the branch linked to each backend.
+  deploy-firestore:
+    needs: checks
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      SERVICE_ACCOUNT: ${{ github.ref_name == 'main' && secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+      PROJECT_ALIAS: ${{ github.ref_name == 'main' && 'prod' || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Prepare credentials
+        id: creds
+        run: |
+          if [ -z "$SERVICE_ACCOUNT" ]; then
+            echo "::warning::No service account secret configured for $PROJECT_ALIAS; skipping Firestore deploy."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+          echo "FIREBASE_PROJECT_ID=$(node -p "require('./.firebaserc').projects['$PROJECT_ALIAS']")" >> "$GITHUB_ENV"
+      - name: Deploy rules and indexes
+        if: steps.creds.outputs.skip != 'true'
+        run: npx firebase deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ALIAS" --non-interactive
+      - name: Base data and first admin
+        if: steps.creds.outputs.skip != 'true'
+        env:
+          BOOTSTRAP_ADMIN_USERNAME: ${{ secrets.BOOTSTRAP_ADMIN_USERNAME }}
+          BOOTSTRAP_ADMIN_NAME: ${{ secrets.BOOTSTRAP_ADMIN_NAME }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+        run: npm run bootstrap

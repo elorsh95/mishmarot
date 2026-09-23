@@ -1,0 +1,17 @@
+# Firebase App Hosting: settings shared by every environment.
+# Each environment (dev/prod) is a separate Firebase project with its own backend.
+# Per-environment values live in apphosting.<environment>.yaml
+# (the environment name is set in the backend settings in the Firebase console).
+runConfig:
+  minInstances: 0
+  maxInstances: 2
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  - variable: NEXT_TELEMETRY_DISABLED
+    value: "1"
+    availability:
+      - BUILD
+      - RUNTIME

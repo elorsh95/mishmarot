@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-heebo), system-ui, "Segoe UI", Arial, sans-serif;
+
+  --color-bg: #f5f6fa;
+  --color-surface: #ffffff;
+  --color-muted: #f1f3f7;
+  --color-border: #e3e6ee;
+  --color-fg: #1b2230;
+  --color-fg-muted: #5d6677;
+  --color-fg-subtle: #98a0ae;
+
+  --color-primary: #3b5bdb;
+  --color-primary-hover: #3049b8;
+  --color-success: #2f9e44;
+  --color-warning: #f59f00;
+  --color-warning-fg: #9a5b00;
+  --color-danger: #e03131;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+/* Native <dialog> keeps its own stacking; make sure it inherits RTL text direction */
+dialog {
+  direction: rtl;
+}

@@ -1,0 +1,8 @@
+# App Hosting environment "prod". Set the backend's "Environment name" to "prod".
+env:
+  # Web API key of the prod Firebase project (Project settings → General → Web API Key).
+  # It is not a secret: it only identifies the project for password sign-in.
+  - variable: FIREBASE_API_KEY
+    value: "REPLACE_WITH_PROD_WEB_API_KEY"
+    availability:
+      - RUNTIME
