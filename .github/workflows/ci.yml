@@ -54,7 +54,8 @@ jobs:
           fi
           echo "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
-          echo "FIREBASE_PROJECT_ID=$(node -p "require('./.firebaserc').projects['$PROJECT_ALIAS']")" >> "$GITHUB_ENV"
+          PROJECT_ID=$(node -p "JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects['$PROJECT_ALIAS']")
+          echo "FIREBASE_PROJECT_ID=$PROJECT_ID" >> "$GITHUB_ENV"
       - name: Deploy rules and indexes
         if: steps.creds.outputs.skip != 'true'
         run: npx firebase deploy --only firestore:rules,firestore:indexes --project "$PROJECT_ALIAS" --non-interactive
