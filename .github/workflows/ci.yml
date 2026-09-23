@@ -77,13 +77,21 @@ jobs:
           BOOTSTRAP_ADMIN_NAME: ${{ secrets.BOOTSTRAP_ADMIN_NAME }}
           BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
         run: npm run bootstrap
+      - name: Auth e-mail links and template
+        id: auth
+        if: steps.creds.outputs.skip != 'true'
+        continue-on-error: true
+        env:
+          # Production URL comes from the repository variable APP_URL_PROD once it exists.
+          APP_URL: ${{ github.ref_name == 'main' && vars.APP_URL_PROD || 'https://mishmarot-dev--mishmarot-dev-cea4a.europe-west4.hosted.app' }}
+        run: npm run configure-auth
       - name: Service account in use
         if: steps.creds.outputs.skip != 'true'
         run: node -e "console.log('client_email:', require(process.env.GOOGLE_APPLICATION_CREDENTIALS).client_email)"
       - name: Result
         if: steps.creds.outputs.skip != 'true'
         run: |
-          echo "indexes: ${{ steps.indexes.outcome }}, rules: ${{ steps.rules.outcome }}, bootstrap: ${{ steps.bootstrap.outcome }}"
-          if [ "${{ steps.indexes.outcome }}" != "success" ] || [ "${{ steps.rules.outcome }}" != "success" ] || [ "${{ steps.bootstrap.outcome }}" != "success" ]; then
+          echo "indexes: ${{ steps.indexes.outcome }}, rules: ${{ steps.rules.outcome }}, bootstrap: ${{ steps.bootstrap.outcome }}, auth: ${{ steps.auth.outcome }}"
+          if [ "${{ steps.indexes.outcome }}" != "success" ] || [ "${{ steps.rules.outcome }}" != "success" ] || [ "${{ steps.bootstrap.outcome }}" != "success" ] || [ "${{ steps.auth.outcome }}" != "success" ]; then
             exit 1
           fi
