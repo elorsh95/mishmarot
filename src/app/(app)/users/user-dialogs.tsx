@@ -7,7 +7,12 @@ import { Checkbox, Field, FormError, Input, Select } from "@/components/ui/form"
 import { useToast } from "@/components/ui/toast";
 import { useAction } from "@/components/ui/use-action";
 import type { UserListItem } from "@/modules/users/service";
-import { createUserAction, resetPasswordAction, updateUserAction } from "./actions";
+import {
+  createUserAction,
+  deleteUserAction,
+  resetPasswordAction,
+  updateUserAction,
+} from "./actions";
 
 export type RoleOption = { id: string; name: string };
 export type TeamOption = { id: string; name: string; isActive: boolean };
@@ -228,6 +233,45 @@ export function ResetPasswordDialog({
         <p className="text-sm text-fg-muted">
           עדיף לשלוח למשתמש קישור במייל, כך שרק הוא יודע את הסיסמה. אחרי הגדרה ידנית המשתמש ינותק
           מכל המכשירים ויצטרך להתחבר עם הסיסמה החדשה.
+        </p>
+      </div>
+    </Dialog>
+  );
+}
+
+export function DeleteUserDialog({ user, onClose }: { user: UserListItem; onClose: () => void }) {
+  const { run, pending, error } = useAction();
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      size="sm"
+      title="מחיקת משתמש"
+      description={`${user.fullName} (${user.username})`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={pending}>
+            ביטול
+          </Button>
+          <Button
+            variant="danger"
+            loading={pending}
+            onClick={() => run(() => deleteUserAction(user.id), { onSuccess: onClose })}
+          >
+            מחיקה לצמיתות
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <FormError error={error} />
+        <p className="text-sm">
+          למחוק את המשתמש <strong>{user.fullName}</strong>? המשתמש לא יוכל להתחבר, ויוסר מניהול
+          הצוותים שלו. לא ניתן לבטל את הפעולה.
+        </p>
+        <p className="text-sm text-fg-muted">
+          ההיסטוריה (יומן פעולות, אישורים והעברות) נשמרת עם שמו. כדי לחסום כניסה בלי למחוק, אפשר
+          להשבית את המשתמש בעריכה.
         </p>
       </div>
     </Dialog>
