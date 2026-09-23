@@ -56,3 +56,63 @@ export async function signInWithPassword(
   console.error("signInWithPassword failed", res.status, message);
   return { ok: false, reason: "unknown" };
 }
+
+async function identityToolkit<T>(
+  path: string,
+  body: object,
+  headers: Record<string, string> = {},
+): Promise<{ ok: true; data: T } | { ok: false; message: string }> {
+  const res = await fetch(`${baseUrl()}/${path}?key=${apiKey()}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  const data = (await res.json()) as T & { error?: { message?: string } };
+  if (res.ok) return { ok: true, data };
+  return { ok: false, message: data.error?.message ?? `HTTP ${res.status}` };
+}
+
+/**
+ * Has Firebase e-mail a "set your password" link (the password-reset template, in Hebrew).
+ * Used both for invitations and for "forgot password". Links are valid for one hour.
+ */
+export async function sendPasswordSetupEmail(email: string): Promise<boolean> {
+  const result = await identityToolkit(
+    "accounts:sendOobCode",
+    { requestType: "PASSWORD_RESET", email },
+    { "X-Firebase-Locale": "he" },
+  );
+  if (!result.ok) console.error("sendOobCode failed", result.message);
+  return result.ok;
+}
+
+export type ResetCodeResult =
+  | { ok: true; email: string }
+  | { ok: false; reason: "expired" | "invalid" | "weak_password" | "unknown" };
+
+function resetFailure(message: string): ResetCodeResult {
+  if (message.startsWith("EXPIRED_OOB_CODE")) return { ok: false, reason: "expired" };
+  if (message.startsWith("INVALID_OOB_CODE")) return { ok: false, reason: "invalid" };
+  if (message.startsWith("WEAK_PASSWORD")) return { ok: false, reason: "weak_password" };
+  console.error("resetPassword failed", message);
+  return { ok: false, reason: "unknown" };
+}
+
+/** Checks a password-reset code without using it. */
+export async function verifyPasswordResetCode(oobCode: string): Promise<ResetCodeResult> {
+  const result = await identityToolkit<{ email: string }>("accounts:resetPassword", { oobCode });
+  return result.ok ? { ok: true, email: result.data.email } : resetFailure(result.message);
+}
+
+/** Uses a password-reset code to set the new password. */
+export async function confirmPasswordReset(
+  oobCode: string,
+  newPassword: string,
+): Promise<ResetCodeResult> {
+  const result = await identityToolkit<{ email: string }>("accounts:resetPassword", {
+    oobCode,
+    newPassword,
+  });
+  return result.ok ? { ok: true, email: result.data.email } : resetFailure(result.message);
+}
