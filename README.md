@@ -113,7 +113,7 @@ firestore.indexes.json     אינדקסים מורכבים
 
 | Branch | סביבה | פרויקט Firebase |
 |---|---|---|
-| `dev` | פיתוח ובדיקות | `mishmarot-dev` |
+| `dev` | פיתוח ובדיקות | `mishmarot-dev-cea4a` |
 | `main` | production | `mishmarot-prod` |
 
 **תהליך העבודה:** פיתוח ב-branch נפרד, ואז PR אל `dev`. אחרי merge, App Hosting פורס אוטומטית לסביבת dev ובודקים שם. אחרי אישור פותחים PR מ-`dev` אל `main`, ובסיום ה-merge הגרסה עולה ל-production.
@@ -137,7 +137,7 @@ GitHub Actions (`.github/workflows/ci.yml`) מריץ בכל PR את lint, typech
 7. **Service account ל-GitHub Actions:** ⚙️ Project settings ← Service accounts ← Generate new private key. ב-GitHub: Settings ← Secrets and variables ← Actions ← New repository secret בשם `FIREBASE_SERVICE_ACCOUNT_DEV` (או `FIREBASE_SERVICE_ACCOUNT_PROD`), ומדביקים את כל תוכן קובץ ה-JSON. **אל תשמרו את הקובץ בריפו.**
 8. **הקמת נתוני בסיס ומשתמש מנהל ראשון** (מהמחשב שלכם, עם אותו קובץ JSON):
    ```bash
-   GOOGLE_APPLICATION_CREDENTIALS=./service-account.json FIREBASE_PROJECT_ID=mishmarot-dev \
+   GOOGLE_APPLICATION_CREDENTIALS=./service-account.json FIREBASE_PROJECT_ID=mishmarot-dev-cea4a \
      npm run bootstrap -- --username admin --name "השם שלך" --password "סיסמה-חזקה1"
    ```
    הפקודה יוצרת תפקידים, הגדרות, משמרות (בוקר, ערב, כפולה), מיקומים (מוקד, בית), סוגי היעדרות, 9 צוותים ואת משתמש המנהל. אפשר להריץ אותה שוב בבטחה.

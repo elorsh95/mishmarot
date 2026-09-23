@@ -1,7 +1,7 @@
 {
   "projects": {
     "default": "demo-mishmarot",
-    "dev": "mishmarot-dev",
+    "dev": "mishmarot-dev-cea4a",
     "prod": "mishmarot-prod"
   }
 }
