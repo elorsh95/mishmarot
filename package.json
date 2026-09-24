@@ -17,6 +17,7 @@
     "test:integration": "firebase emulators:exec --project demo-mishmarot --only auth,firestore \"vitest run --config vitest.integration.config.mts\""
   },
   "dependencies": {
+    "@hebcal/core": "^5.10.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "exceljs": "^4.4.0",

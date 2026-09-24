@@ -1,4 +1,5 @@
-import { isIsoDate, weekdayOf, weekStartOf, type IsoDate } from "@/lib/dates";
+import { isIsoDate, weekStartOf, type IsoDate } from "@/lib/dates";
+import { shiftRunsOn, type DayInfo } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
 import { canForTeam, type Actor } from "@/modules/permissions/check";
 import type { EntryInput, WeekStatus } from "./types";
@@ -26,13 +27,21 @@ export function editBlockReason(
 }
 
 /** Validates an entry against the catalog for a given date. Returns an error or null. */
-export function entryError(catalog: Catalog, entry: EntryInput, date: IsoDate): string | null {
+export function entryError(
+  catalog: Catalog,
+  entry: EntryInput,
+  date: IsoDate,
+  day?: DayInfo,
+): string | null {
   if (!isIsoDate(date)) return "תאריך לא תקין";
+  if (day?.kind === "closed") return `${day.name ?? "חג"}: המוקד סגור ביום זה`;
   if (entry.kind === "shift") {
     const shift = catalog.shifts.find((s) => s.id === entry.shiftId);
     if (!shift || !shift.isActive) return "המשמרת לא קיימת או לא פעילה";
-    if (!shift.daysOfWeek.includes(weekdayOf(date))) {
-      return `משמרת "${shift.name}" לא מתקיימת ביום זה`;
+    if (!shiftRunsOn(shift, date, day)) {
+      return day?.kind === "eve"
+        ? `${day.name ?? "ערב חג"}: משמרת "${shift.name}" לא מתקיימת בערב חג`
+        : `משמרת "${shift.name}" לא מתקיימת ביום זה`;
     }
     const location = catalog.locations.find((l) => l.id === entry.locationId);
     if (!location || !location.isActive) return "יש לבחור מיקום עבודה פעיל";

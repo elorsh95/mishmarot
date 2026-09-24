@@ -22,6 +22,8 @@ import { DomainError, NotFoundError } from "@/lib/errors";
 import { emit } from "@/lib/events";
 import { agentName, type Agent } from "@/modules/agents/types";
 import { auditInTx } from "@/modules/audit/service";
+import { getDayInfos } from "@/modules/calendar/service";
+import { shiftRunsOn, type DayInfo } from "@/modules/calendar/types";
 import { getCatalog } from "@/modules/catalog/service";
 import { assertCanForTeam, canForTeam, teamScope, type Actor } from "@/modules/permissions/check";
 import { getSettings } from "@/modules/settings/service";
@@ -50,6 +52,8 @@ export interface WeekView {
   weekStart: IsoDate;
   label: string;
   days: IsoDate[];
+  /** Holidays and special days: how each day of the week is worked. */
+  dayInfo: Record<IsoDate, DayInfo>;
   today: IsoDate;
   agents: Array<Agent & { inTeam: boolean }>;
   assignments: Record<string, Assignment>;
@@ -138,6 +142,8 @@ export async function getWeekView(
   const hasSaturday = catalog.shifts.some((s) => s.isActive && s.daysOfWeek.includes(6));
   const days = weekDates(weekStart).filter((d) => hasSaturday || weekdayOf(d) !== 6);
 
+  const dayInfo = await getDayInfos(days);
+
   // Monthly quota usage for the months this week touches.
   const months = [...new Set(days.map(monthOf))];
   const quotaLocations = new Set(catalog.locations.filter((l) => l.requiresQuota).map((l) => l.id));
@@ -192,6 +198,7 @@ export async function getWeekView(
     weekStart,
     label: formatWeekRange(weekStart),
     days,
+    dayInfo,
     today,
     agents,
     assignments,
@@ -269,18 +276,20 @@ async function existingWeekIds(teamId: string, weekStart: IsoDate) {
   return new Set(snap.docs.map((d) => d.id));
 }
 
-/** Copies shift entries (not absences) from the previous week into empty days. */
+/** Copies shift entries (not absences) from the previous week into empty, workable days. */
 export async function copyPreviousWeek(actor: Actor, teamId: string, weekStartInput: IsoDate) {
   assertCanForTeam(actor, "schedule.edit", teamId);
   const weekStart = weekStartOf(weekStartInput);
   const prevStart = addDays(weekStart, -7);
-  const [prevSnap, existing, agentsSnap] = await Promise.all([
+  const [prevSnap, existing, agentsSnap, catalog, dayInfo] = await Promise.all([
     col(COLLECTIONS.assignments)
       .where("teamId", "==", teamId)
       .where("weekStart", "==", prevStart)
       .get(),
     existingWeekIds(teamId, weekStart),
     col(COLLECTIONS.agents).where("teamId", "==", teamId).where("isActive", "==", true).get(),
+    getCatalog(),
+    getDayInfos(weekDates(weekStart)),
   ]);
   const activeAgents = new Set(agentsSnap.docs.map((d) => d.id));
   const ops: ChangeOp[] = [];
@@ -290,6 +299,9 @@ export async function copyPreviousWeek(actor: Actor, teamId: string, weekStartIn
     if (!activeAgents.has(prev.agentId)) continue;
     const date = addDays(prev.date, 7);
     if (existing.has(assignmentId(prev.agentId, date))) continue;
+    // Holidays and eves this week are skipped quietly rather than reported as errors.
+    const shift = catalog.shifts.find((sh) => sh.id === prev.shiftId);
+    if (shift && !shiftRunsOn(shift, date, dayInfo[date])) continue;
     ops.push({
       agentId: prev.agentId,
       date,
@@ -304,10 +316,11 @@ export async function copyPreviousWeek(actor: Actor, teamId: string, weekStartIn
 export async function fillFromDefaults(actor: Actor, teamId: string, weekStartInput: IsoDate) {
   assertCanForTeam(actor, "schedule.edit", teamId);
   const weekStart = weekStartOf(weekStartInput);
-  const [catalog, existing, agentsSnap] = await Promise.all([
+  const [catalog, existing, agentsSnap, dayInfo] = await Promise.all([
     getCatalog(),
     existingWeekIds(teamId, weekStart),
     col(COLLECTIONS.agents).where("teamId", "==", teamId).where("isActive", "==", true).get(),
+    getDayInfos(weekDates(weekStart)),
   ]);
   const fallbackLocation = catalog.locations.find((l) => l.isActive && !l.requiresQuota);
   const ops: ChangeOp[] = [];
@@ -316,8 +329,11 @@ export async function fillFromDefaults(actor: Actor, teamId: string, weekStartIn
     const locationId = agent.defaultLocationId ?? fallbackLocation?.id;
     if (!shift || !locationId) continue;
     for (const date of weekDates(weekStart)) {
-      const weekday = weekdayOf(date);
-      if (!(agent.defaultDays ?? []).includes(weekday) || !shift.daysOfWeek.includes(weekday)) {
+      // On a holiday eve the day's usual shift may not run (e.g. evening); it is left empty.
+      if (
+        !(agent.defaultDays ?? []).includes(weekdayOf(date)) ||
+        !shiftRunsOn(shift, date, dayInfo[date])
+      ) {
         continue;
       }
       if (existing.has(assignmentId(agent.id, date))) continue;
