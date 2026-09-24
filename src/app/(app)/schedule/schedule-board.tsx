@@ -435,8 +435,12 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell }: GridP
                     <div className="min-w-0">
                       <p className="truncate font-medium">{agentName(agent)}</p>
                       <p className="text-xs text-fg-subtle">
-                        {agent.employeeNumber}
-                        {!agent.isActive ? " · לא פעיל" : !agent.inTeam ? " · עבר צוות" : ""}
+                        {[
+                          agent.employeeNumber,
+                          !agent.isActive ? "לא פעיל" : !agent.inTeam ? "עבר צוות" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-0.5">

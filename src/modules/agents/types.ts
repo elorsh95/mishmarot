@@ -20,3 +20,25 @@ export interface Agent {
 export function agentName(agent: Pick<Agent, "firstName" | "lastName">) {
   return `${agent.firstName} ${agent.lastName}`.trim();
 }
+
+/** One line of an agents import file, after validation. */
+export interface AgentImportRow {
+  line: number;
+  firstName: string;
+  lastName: string;
+  employeeNumber: string;
+  teamId: string | null;
+  teamName: string;
+  /** new: will be added; exists: already in the team (skipped); error: see message. */
+  status: "new" | "exists" | "error";
+  message: string | null;
+}
+
+export interface AgentImportResult {
+  rows: AgentImportRow[];
+  /** Number of agents actually added (0 on a preview). */
+  created: number;
+}
+
+/** Largest file the import accepts, in rows. */
+export const AGENT_IMPORT_MAX_ROWS = 1000;

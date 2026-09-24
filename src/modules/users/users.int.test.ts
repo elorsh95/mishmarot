@@ -133,7 +133,9 @@ describe("deleting users", () => {
     await deleteUser(actors.admin(), userId);
 
     expect(await getUser(userId)).toBeNull();
-    await expect(adminAuth().getUser(userId)).rejects.toMatchObject({ code: "auth/user-not-found" });
+    await expect(adminAuth().getUser(userId)).rejects.toMatchObject({
+      code: "auth/user-not-found",
+    });
     expect((await col(COLLECTIONS.teams).doc("renault").get()).get("managerIds")).toEqual([]);
     const audit = await col(COLLECTIONS.auditLogs).where("action", "==", "user.delete").get();
     expect(audit.size).toBe(1);

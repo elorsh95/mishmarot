@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Home, Pencil, Plus, Search } from "lucide-react";
+import { Home, Pencil, Plus, Search, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import { WEEKDAY_SHORT } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
 import type { Catalog } from "@/modules/catalog/service";
 import { saveAgentAction } from "./actions";
+import { ImportAgentsDialog } from "./import-dialog";
 
 interface TeamOption {
   id: string;
@@ -46,6 +47,7 @@ export function AgentsView({
   const [query, setQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const teamName = (id: string) => teams.find((t) => t.id === id)?.name ?? "";
   const shiftName = (id: string | null) => catalog.shifts.find((s) => s.id === id)?.name;
@@ -103,6 +105,12 @@ export function AgentsView({
             </Link>
           ) : null}
           {manageTeamIds.length > 0 ? (
+            <Button variant="secondary" onClick={() => setImporting(true)}>
+              <Upload className="h-4 w-4" />
+              ייבוא מקובץ
+            </Button>
+          ) : null}
+          {manageTeamIds.length > 0 ? (
             <Button onClick={() => setEditing("new")}>
               <Plus className="h-4 w-4" />
               נציג חדש
@@ -133,7 +141,7 @@ export function AgentsView({
                   {visible.map((a) => (
                     <tr key={a.id} className={cn(!a.isActive && "text-fg-muted")}>
                       <Td className="font-medium">{agentName(a)}</Td>
-                      <Td>{a.employeeNumber}</Td>
+                      <Td>{a.employeeNumber || "—"}</Td>
                       <Td>{teamName(a.teamId)}</Td>
                       <Td className="text-fg-muted">
                         {shiftName(a.defaultShiftId) ? (
@@ -178,7 +186,8 @@ export function AgentsView({
                       {!a.isActive ? <span className="text-xs"> (לא פעיל)</span> : null}
                     </p>
                     <p className="flex items-center gap-2 text-xs text-fg-muted">
-                      {a.employeeNumber} · {teamName(a.teamId)}
+                      {a.employeeNumber ? `${a.employeeNumber} · ` : null}
+                      {teamName(a.teamId)}
                       <QuotaCell agent={a} defaultQuota={defaultQuota} />
                     </p>
                   </div>
@@ -202,6 +211,12 @@ export function AgentsView({
         {visible.length} נציגים · מכסת ברירת המחדל לעבודה מהבית: {defaultQuota} ימים בחודש
       </p>
 
+      {importing ? (
+        <ImportAgentsDialog
+          teams={teams.filter((t) => t.isActive && manageTeamIds.includes(t.id))}
+          onClose={() => setImporting(false)}
+        />
+      ) : null}
       {editing ? (
         <AgentDialog
           agent={editing === "new" ? null : editing}
@@ -322,7 +337,11 @@ function AgentDialog({
               onChange={(e) => set("lastName", e.target.value)}
             />
           </Field>
-          <Field label="מספר עובד" htmlFor="employeeNumber" error={fieldErrors.employeeNumber}>
+          <Field
+            label="מספר עובד (לא חובה)"
+            htmlFor="employeeNumber"
+            error={fieldErrors.employeeNumber}
+          >
             <Input
               id="employeeNumber"
               dir="ltr"

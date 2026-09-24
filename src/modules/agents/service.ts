@@ -11,12 +11,13 @@ import { getTeam } from "@/modules/teams/service";
 import { agentName, type Agent } from "./types";
 
 export const agentInputSchema = z.object({
+  /** Optional for now; unique when given. */
   employeeNumber: z
     .string()
     .trim()
-    .min(1, "יש להזין מספר עובד")
     .max(20)
-    .regex(/^[0-9A-Za-z-]+$/, "מספר עובד יכול להכיל ספרות ואותיות באנגלית בלבד"),
+    .regex(/^[0-9A-Za-z-]*$/, "מספר עובד יכול להכיל ספרות ואותיות באנגלית בלבד")
+    .default(""),
   firstName: z.string().trim().min(1, "יש להזין שם פרטי").max(40),
   lastName: z.string().trim().min(1, "יש להזין שם משפחה").max(40),
   teamId: z.string().min(1, "יש לבחור צוות"),
@@ -66,6 +67,7 @@ async function assertEmployeeNumberFree(
   employeeNumber: string,
   exceptId?: string,
 ) {
+  if (!employeeNumber) return;
   const dup = await tx.get(
     col(COLLECTIONS.agents).where("employeeNumber", "==", employeeNumber).limit(2),
   );
@@ -91,7 +93,7 @@ export async function createAgent(actor: Actor, input: AgentInput): Promise<stri
       entityType: "agent",
       entityId: ref.id,
       teamId: data.teamId,
-      summary: `נוסף נציג ${agentName(data)} (${data.employeeNumber}) לצוות ${team.name}`,
+      summary: `נוסף נציג ${agentName(data)}${data.employeeNumber ? ` (${data.employeeNumber})` : ""} לצוות ${team.name}`,
       after: data,
     });
   });
