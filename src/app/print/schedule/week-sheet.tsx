@@ -3,6 +3,7 @@ import { cn } from "@/lib/cn";
 import { formatDayMonth, formatMonth, WEEKDAY_NAMES, weekdayOf } from "@/lib/dates";
 import { agentName } from "@/modules/agents/types";
 import type { Catalog } from "@/modules/catalog/service";
+import { shiftWeekday } from "@/modules/calendar/types";
 import type { WeekView } from "@/modules/schedule/service";
 import { assignmentId, type Assignment } from "@/modules/schedule/types";
 
@@ -60,6 +61,13 @@ export function WeekSheet({
                 <th key={d} className="border border-gray-400 bg-gray-100 px-1 py-1 text-center">
                   <div className="font-bold">{WEEKDAY_NAMES[weekdayOf(d)]}</div>
                   <div className="font-normal text-gray-600">{formatDayMonth(d)}</div>
+                  {view.dayInfo[d]?.name || view.dayInfo[d]?.kind === "closed" ? (
+                    <div className="text-[9px] font-semibold">
+                      {view.dayInfo[d].name ?? "חג"}
+                      {view.dayInfo[d].kind === "closed" ? " · סגור" : ""}
+                      {view.dayInfo[d].kind === "eve" ? " · כמו שישי" : ""}
+                    </div>
+                  ) : null}
                 </th>
               ))}
             </tr>
@@ -116,7 +124,7 @@ export function WeekSheet({
                     className="border border-gray-400 bg-gray-100 px-1 py-1 text-center text-[10px]"
                   >
                     בוקר {c.morning}
-                    {weekdayOf(date) !== 5 ? ` · ערב ${c.evening}` : ""}
+                    {shiftWeekday(date, view.dayInfo[date]) !== 5 ? ` · ערב ${c.evening}` : ""}
                     {c.absent ? ` · נעדרים ${c.absent}` : ""}
                   </td>
                 );
