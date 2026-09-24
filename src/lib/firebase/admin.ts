@@ -18,14 +18,17 @@ function getApp(): App {
   return projectId ? initializeApp({ projectId }) : initializeApp();
 }
 
-let firestore: Firestore | undefined;
+// Kept on globalThis: route handlers and pages can load this module separately (as in dev),
+// while firebase-admin shares one Firestore instance, whose settings() may run only once.
+const cached = globalThis as typeof globalThis & { __mishmarotFirestore?: Firestore };
 
 export function db(): Firestore {
-  if (!firestore) {
-    firestore = getFirestore(getApp());
+  if (!cached.__mishmarotFirestore) {
+    const firestore = getFirestore(getApp());
     firestore.settings({ ignoreUndefinedProperties: true });
+    cached.__mishmarotFirestore = firestore;
   }
-  return firestore;
+  return cached.__mishmarotFirestore;
 }
 
 export function adminAuth() {

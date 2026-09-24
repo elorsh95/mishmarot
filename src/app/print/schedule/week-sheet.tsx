@@ -73,9 +73,13 @@ export function WeekSheet({
                     {agent.employeeNumber}
                     {view.quotaUsage[agent.id]
                       ?.filter((u) => months.includes(u.month))
-                      .map((u) => (
-                        <span key={u.month} className="ms-1.5">
-                          · בית{months.length > 1 ? ` ${formatMonth(u.month).split(" ")[0]}` : ""}:{" "}
+                      .map((u, i) => (
+                        <span
+                          key={u.month}
+                          className={agent.employeeNumber || i > 0 ? "ms-1.5" : ""}
+                        >
+                          {agent.employeeNumber || i > 0 ? "· " : ""}בית
+                          {months.length > 1 ? ` ${formatMonth(u.month).split(" ")[0]}` : ""}:{" "}
                           <span dir="ltr">
                             {u.used}/{u.quota}
                           </span>
