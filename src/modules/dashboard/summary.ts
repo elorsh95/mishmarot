@@ -13,7 +13,10 @@ export interface DaySummary {
   absent: number;
   /** Active agents of the team with nothing scheduled on a workable day. */
   unassigned: number;
-  /** A workable day with nobody on the morning, or on an expected evening. */
+  /** Fewer agents than needed (the team's minimum, or at least one) on the morning / evening. */
+  shortMorning: boolean;
+  shortEvening: boolean;
+  /** A workable day that is short on the morning or on an expected evening. */
   gap: boolean;
 }
 
@@ -40,6 +43,7 @@ export function summarizeWeek({
   shifts,
   agentIds,
   entries,
+  min = { morning: 0, evening: 0 },
 }: {
   days: IsoDate[];
   dayInfo: Record<IsoDate, DayInfo>;
@@ -47,7 +51,11 @@ export function summarizeWeek({
   /** Active agents who belong to the team. */
   agentIds: string[];
   entries: Pick<Assignment, "agentId" | "date" | "kind" | "shiftId" | "quotaStatus">[];
+  /** The team's staffing minimums; 0 means "at least one". */
+  min?: { morning: number; evening: number };
 }): WeekSummary {
+  const needMorning = Math.max(1, min.morning);
+  const needEvening = Math.max(1, min.evening);
   const active = shifts.filter((s) => s.isActive);
   const shiftOf = new Map(shifts.map((s) => [s.id, s]));
   const team = new Set(agentIds);
@@ -70,8 +78,22 @@ export function summarizeWeek({
       }
     }
     const unassigned = workable ? [...team].filter((id) => !scheduled.has(id)).length : 0;
-    const gap = team.size > 0 && workable && (morning === 0 || (eveningExpected && evening === 0));
-    return { date, workable, eveningExpected, morning, evening, absent, unassigned, gap };
+    // With no agents in the team there is nothing to cover, so nothing is reported short.
+    const counts = team.size > 0 && workable;
+    const shortMorning = counts && morning < needMorning;
+    const shortEvening = counts && eveningExpected && evening < needEvening;
+    return {
+      date,
+      workable,
+      eveningExpected,
+      morning,
+      evening,
+      absent,
+      unassigned,
+      shortMorning,
+      shortEvening,
+      gap: shortMorning || shortEvening,
+    };
   });
   return {
     agents: team.size,

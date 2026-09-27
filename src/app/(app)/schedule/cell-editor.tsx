@@ -1,22 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Home } from "lucide-react";
+import { AlertTriangle, ChevronDown, History, Home } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, Spinner } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Checkbox, Field, FormError, Input } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
-import { formatDateWithDay, formatMonth, monthOf } from "@/lib/dates";
+import { formatDateTime, formatDateWithDay, formatMonth, monthOf } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
 import { shiftRunsOn, type DayInfo } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
 import type { ApprovalInfo, QuotaUsage } from "@/modules/schedule/service";
-import { QUOTA_STATUS_LABELS, type Assignment } from "@/modules/schedule/types";
+import {
+  QUOTA_STATUS_LABELS,
+  type Assignment,
+  type CellHistoryItem,
+} from "@/modules/schedule/types";
 import type { SkippedOp } from "@/modules/schedule/engine";
-import { setAbsenceRangeAction, setEntryAction } from "./actions";
+import { cellHistoryAction, setAbsenceRangeAction, setEntryAction } from "./actions";
 import { tint } from "./entry-chip";
 
 export interface EditTarget {
@@ -44,7 +48,11 @@ export function CellEditor({
   readOnly: boolean;
   onClose: () => void;
   /** Called after an absence range was saved, with the summary and any skipped days. */
-  onRangeResult: (result: { summary: string; skipped: SkippedOp[] }) => void;
+  onRangeResult: (result: {
+    summary: string;
+    skipped: SkippedOp[];
+    undoToken?: string | null;
+  }) => void;
 }) {
   const { agent, date, entry } = target;
   const closed = day?.kind === "closed";
@@ -305,8 +313,61 @@ export function CellEditor({
             placeholder="אופציונלי"
           />
         </Field>
+
+        <CellHistory agentId={agent.id} date={date} />
       </div>
     </Dialog>
+  );
+}
+
+/** Who changed this cell and when, loaded on request from the audit log. */
+function CellHistory({ agentId, date }: { agentId: string; date: string }) {
+  const [items, setItems] = useState<CellHistoryItem[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && items === null) {
+      setLoading(true);
+      const result = await cellHistoryAction(agentId, date);
+      setItems(result.ok ? result.data : []);
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="border-t border-border pt-3">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex items-center gap-1.5 text-sm font-medium text-fg-muted hover:text-fg"
+      >
+        <History className="h-4 w-4" />
+        היסטוריית שינויים
+        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
+      </button>
+      {open ? (
+        loading ? (
+          <Spinner className="mt-2 text-fg-muted" />
+        ) : items && items.length > 0 ? (
+          <ol className="mt-2 max-h-56 space-y-2 overflow-y-auto">
+            {items.map((item) => (
+              <li key={item.id} className="border-s-2 border-border ps-3 text-xs">
+                <p className="text-fg">{item.summary}</p>
+                <p className="text-fg-subtle">
+                  {item.actorName} · {formatDateTime(item.createdAt)}
+                </p>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="mt-2 text-xs text-fg-muted">אין שינויים רשומים למשבצת הזו.</p>
+        )
+      ) : null}
+    </div>
   );
 }
 

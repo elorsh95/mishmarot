@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   CheckSquare,
   ChevronLeft,
@@ -12,6 +12,7 @@ import {
   Eraser,
   FileDown,
   FileSpreadsheet,
+  LayoutTemplate,
   Lock,
   Plus,
   Send,
@@ -40,7 +41,7 @@ import {
   weekdayOf,
 } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
-import { shiftRunsOn, shiftWeekday, type DayInfo } from "@/modules/calendar/types";
+import { shiftRunsOn, type DayInfo } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
 import type { SkippedOp } from "@/modules/schedule/engine";
 import type { WeekView } from "@/modules/schedule/service";
@@ -51,11 +52,13 @@ import {
   copyPreviousWeekAction,
   fillDefaultsAction,
   setWeekStatusAction,
+  undoAction,
 } from "./actions";
 import { BulkEditor } from "./bulk-editor";
 import { CellEditor, QuotaBadge, QuotaSummaryBadge, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
 import { ShareDialog } from "./share-dialog";
+import { TemplatesDialog } from "./templates-dialog";
 
 type ViewMode = "agents" | "coverage";
 
@@ -71,6 +74,15 @@ export function ScheduleBoard({
   canViewAgents: boolean;
 }) {
   const router = useRouter();
+  const highlight = useSearchParams().get("agent");
+  // Coming from quick search: bring the agent's row into view (desktop table or phone list).
+  useEffect(() => {
+    if (!highlight) return;
+    const row = [`agent-row-${highlight}`, `agent-item-${highlight}`]
+      .map((id) => document.getElementById(id))
+      .find((el) => el && el.offsetParent !== null);
+    row?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [highlight]);
   const [mode, setMode] = useState<ViewMode>("agents");
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [skipped, setSkipped] = useState<SkippedOp[] | null>(null);
@@ -79,6 +91,7 @@ export function ScheduleBoard({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkEditing, setBulkEditing] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [templates, setTemplates] = useState(false);
   const bulk = useAction();
   const toast = useToast();
 
@@ -135,8 +148,19 @@ export function ScheduleBoard({
     setEditing({ agent, date, entry });
   }
 
-  function showResult(data: { summary: string; skipped: SkippedOp[] }) {
-    toast.success(data.summary);
+  function showResult(data: { summary: string; skipped: SkippedOp[]; undoToken?: string | null }) {
+    const token = data.undoToken;
+    toast.success(
+      data.summary,
+      token
+        ? {
+            action: {
+              label: "ביטול",
+              onClick: () => bulk.run(() => undoAction(token), { onSuccess: showResult }),
+            },
+          }
+        : undefined,
+    );
     if (data.skipped.length > 0) setSkipped(data.skipped);
   }
 
@@ -166,6 +190,13 @@ export function ScheduleBoard({
         hint="לפי המשמרת, המיקום וימי העבודה הקבועים של כל נציג"
       >
         מילוי לפי ברירת מחדל
+      </MenuItem>
+      <MenuItem
+        icon={<LayoutTemplate className="h-4 w-4" />}
+        onClick={() => setTemplates(true)}
+        hint="שמירת השבוע כתבנית, או מילוי השבוע מתבנית שמורה"
+      >
+        תבניות שבוע
       </MenuItem>
       <MenuSeparator />
       <MenuItem
@@ -457,6 +488,7 @@ export function ScheduleBoard({
             usageOf={usageOf}
             onCell={openCell}
             selection={selection}
+            highlight={highlight}
           />
           <DayList
             view={view}
@@ -466,6 +498,7 @@ export function ScheduleBoard({
             usageOf={usageOf}
             onCell={openCell}
             selection={selection}
+            highlight={highlight}
           />
         </>
       ) : (
@@ -501,6 +534,17 @@ export function ScheduleBoard({
             ניקוי בחירה
           </Button>
         </div>
+      ) : null}
+
+      {templates ? (
+        <TemplatesDialog
+          teamId={view.team.id}
+          weekStart={view.weekStart}
+          weekLabel={view.label}
+          canSave={Object.values(view.assignments).some((a) => a.kind === "shift")}
+          onApplied={showResult}
+          onClose={() => setTemplates(false)}
+        />
       ) : null}
 
       {sharing ? (
@@ -592,6 +636,8 @@ interface GridProps {
   usageOf: (agentId: string, date: string) => WeekView["quotaUsage"][string][number] | undefined;
   onCell: (agent: ViewAgent, date: string) => void;
   selection: Selection;
+  /** An agent to point out (from quick search: ?agent=). */
+  highlight: string | null;
 }
 
 function DayHeader({ date, today, info }: { date: string; today: string; info?: DayInfo }) {
@@ -628,7 +674,16 @@ function HolidayTag({ info }: { info?: DayInfo }) {
   );
 }
 
-function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell, selection }: GridProps) {
+function AgentsGrid({
+  view,
+  catalog,
+  editable,
+  entryOf,
+  usageOf,
+  onCell,
+  selection,
+  highlight,
+}: GridProps) {
   return (
     <Card className="hidden overflow-hidden md:block">
       <div className="overflow-x-auto">
@@ -666,9 +721,18 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell, selecti
             {view.agents.map((agent) => (
               <tr
                 key={agent.id}
-                className={cn(!agent.isActive || !agent.inTeam ? "opacity-60" : "")}
+                id={`agent-row-${agent.id}`}
+                className={cn(
+                  !agent.isActive || !agent.inTeam ? "opacity-60" : "",
+                  highlight === agent.id && "bg-primary/10",
+                )}
               >
-                <th className="sticky start-0 z-10 border-b border-e border-border bg-surface px-3 py-2 text-start font-normal">
+                <th
+                  className={cn(
+                    "sticky start-0 z-10 border-b border-e border-border bg-surface px-3 py-2 text-start font-normal",
+                    highlight === agent.id && "border-s-4 border-s-primary",
+                  )}
+                >
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       {selection.active ? (
@@ -765,6 +829,32 @@ function coverageFor(view: WeekView, catalog: Catalog, date: string) {
   return { morning, evening, absent };
 }
 
+/**
+ * Whether a day falls short of the team's minimum (at least one) on the morning / evening.
+ * Days nobody works (closed, no shift runs) and teams without active agents are never short.
+ */
+function shortfall(view: WeekView, catalog: Catalog, date: string) {
+  const c = coverageFor(view, catalog, date);
+  const running = catalog.shifts.filter(
+    (s) => s.isActive && shiftRunsOn(s, date, view.dayInfo[date]),
+  );
+  const counts = running.length > 0 && view.agents.some((a) => a.isActive && a.inTeam);
+  return {
+    ...c,
+    eveningExpected: running.some((s) => s.coversEvening),
+    shortMorning: counts && c.morning < Math.max(1, view.team.minMorning),
+    shortEvening:
+      counts &&
+      running.some((s) => s.coversEvening) &&
+      c.evening < Math.max(1, view.team.minEvening),
+  };
+}
+
+/** "3" or, with a minimum set, "3/5". */
+function countLabel(count: number, min: number) {
+  return min > 0 ? `${count}/${min}` : String(count);
+}
+
 function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog }) {
   return (
     <tr className="bg-muted/60">
@@ -772,7 +862,7 @@ function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog })
         סה״כ ביום
       </th>
       {view.days.map((date) => {
-        const c = coverageFor(view, catalog, date);
+        const c = shortfall(view, catalog, date);
         if (view.dayInfo[date]?.kind === "closed" && c.morning + c.evening + c.absent === 0) {
           return (
             <td key={date} className="px-2 py-2 text-center text-xs text-fg-muted">
@@ -781,13 +871,25 @@ function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog })
           );
         }
         return (
-          <td key={date} className="px-2 py-2 text-center text-xs text-fg-muted">
-            <div>
-              בוקר: <strong className="text-fg">{c.morning}</strong>
+          <td
+            key={date}
+            className={cn(
+              "px-2 py-2 text-center text-xs text-fg-muted",
+              (c.shortMorning || c.shortEvening) && "bg-danger/10",
+            )}
+          >
+            <div className={cn(c.shortMorning && "font-semibold text-danger")}>
+              בוקר:{" "}
+              <strong className={c.shortMorning ? "text-danger" : "text-fg"}>
+                {countLabel(c.morning, view.team.minMorning)}
+              </strong>
             </div>
-            {shiftWeekday(date, view.dayInfo[date]) !== 5 ? (
-              <div>
-                ערב: <strong className="text-fg">{c.evening}</strong>
+            {c.eveningExpected ? (
+              <div className={cn(c.shortEvening && "font-semibold text-danger")}>
+                ערב:{" "}
+                <strong className={c.shortEvening ? "text-danger" : "text-fg"}>
+                  {countLabel(c.evening, view.team.minEvening)}
+                </strong>
               </div>
             ) : null}
             {c.absent > 0 ? <div>נעדרים: {c.absent}</div> : null}
@@ -799,10 +901,19 @@ function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog })
 }
 
 /** Mobile: one day at a time. */
-function DayList({ view, catalog, editable, entryOf, usageOf, onCell, selection }: GridProps) {
+function DayList({
+  view,
+  catalog,
+  editable,
+  entryOf,
+  usageOf,
+  onCell,
+  selection,
+  highlight,
+}: GridProps) {
   const initial = view.days.includes(view.today) ? view.today : view.days[0];
   const [day, setDay] = useState(initial);
-  const c = coverageFor(view, catalog, day);
+  const c = shortfall(view, catalog, day);
   return (
     <div className="space-y-3 md:hidden">
       <div className="sticky top-13 z-20 -mx-4 flex gap-1.5 overflow-x-auto bg-bg/95 px-4 py-2 backdrop-blur">
@@ -841,9 +952,19 @@ function DayList({ view, catalog, editable, entryOf, usageOf, onCell, selection 
         </Button>
       ) : null}
       <p className="text-xs text-fg-muted">
-        בוקר: {c.morning}
-        {shiftWeekday(day, view.dayInfo[day]) !== 5 ? ` · ערב: ${c.evening}` : ""}
+        <span className={cn(c.shortMorning && "font-semibold text-danger")}>
+          בוקר: {countLabel(c.morning, view.team.minMorning)}
+        </span>
+        {c.eveningExpected ? (
+          <span className={cn(c.shortEvening && "font-semibold text-danger")}>
+            {" "}
+            · ערב: {countLabel(c.evening, view.team.minEvening)}
+          </span>
+        ) : null}
         {c.absent ? ` · נעדרים: ${c.absent}` : ""}
+        {c.shortMorning || c.shortEvening ? (
+          <span className="font-semibold text-danger"> · חסרים נציגים</span>
+        ) : null}
       </p>
       <Card className="divide-y divide-border">
         {view.agents.map((agent) => {
@@ -856,12 +977,14 @@ function DayList({ view, catalog, editable, entryOf, usageOf, onCell, selection 
           return (
             <button
               key={agent.id}
+              id={`agent-item-${agent.id}`}
               type="button"
               disabled={!clickable}
               onClick={() => onCell(agent, day)}
               className={cn(
                 "flex w-full items-center gap-3 px-3 py-2.5 text-start disabled:opacity-60",
                 isSelected && "bg-primary/15",
+                highlight === agent.id && "border-s-4 border-s-primary bg-primary/10",
               )}
             >
               <div className="min-w-0 flex-1">

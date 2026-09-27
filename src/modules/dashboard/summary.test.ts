@@ -66,6 +66,17 @@ describe("week coverage summary", () => {
     expect(summary.unassigned).toBe(1 + 2 + 1); // wed b, thu a+b, fri b
     expect(summary.gaps).toBe(3); // mon, wed, thu
 
+    // With a minimum of 2 on the morning, Sunday (1 agent) is short too
+    const withMin = summarizeWeek({
+      days,
+      dayInfo: {},
+      shifts,
+      agentIds: ["a", "b"],
+      entries: [entry("a", "2030-03-03", "m"), entry("b", "2030-03-03", "e")],
+      min: { morning: 2, evening: 1 },
+    });
+    expect(withMin.days[0]).toMatchObject({ shortMorning: true, shortEvening: false, gap: true });
+
     const empty = summarizeWeek({ days, dayInfo: {}, shifts, agentIds: [], entries: [] });
     expect(empty).toMatchObject({ agents: 0, gaps: 0, unassigned: 0 });
   });

@@ -27,7 +27,7 @@ import { getCatalog } from "@/modules/catalog/service";
 import { assertCanForTeam, canForTeam, teamScope, type Actor } from "@/modules/permissions/check";
 import { getSettings } from "@/modules/settings/service";
 import { getTeam, type Team } from "@/modules/teams/service";
-import { applyChanges, type ApplyResult } from "./engine";
+import { applyChanges, noChanges, type ApplyResult } from "./engine";
 import { countUsedQuotaDays, quotaPeriodField, quotaPeriodKey } from "./quota";
 import { isPastWeek } from "./rules";
 import {
@@ -320,7 +320,7 @@ export async function copyPreviousWeek(actor: Actor, teamId: string, weekStartIn
       entry: { kind: "shift", shiftId: prev.shiftId, locationId: prev.locationId, note: prev.note },
     });
   }
-  if (ops.length === 0) return { changed: 0, skipped: [], pendingApprovalIds: [] };
+  if (ops.length === 0) return noChanges();
   return applyChanges(actor, ops, { mode: "bulk" });
 }
 
@@ -356,7 +356,7 @@ export async function fillFromDefaults(actor: Actor, teamId: string, weekStartIn
       });
     }
   }
-  if (ops.length === 0) return { changed: 0, skipped: [], pendingApprovalIds: [] };
+  if (ops.length === 0) return noChanges();
   return applyChanges(actor, ops, { mode: "bulk" });
 }
 
@@ -401,7 +401,7 @@ export async function setAbsenceRange(
     .filter((d) => hasSaturday || weekdayOf(d) !== 6)
     .filter((d) => !workDaysOnly || (agent.defaultDays ?? []).includes(weekdayOf(d)))
     .map((date) => ({ agentId, date, entry }));
-  if (ops.length === 0) return { changed: 0, skipped: [], pendingApprovalIds: [] };
+  if (ops.length === 0) return noChanges();
   return applyChanges(actor, ops, { mode: "bulk" });
 }
 
@@ -411,7 +411,7 @@ export async function setEntries(
   cells: Array<{ agentId: string; date: IsoDate }>,
   entry: EntryInput | null,
 ): Promise<ApplyResult> {
-  if (cells.length === 0) return { changed: 0, skipped: [], pendingApprovalIds: [] };
+  if (cells.length === 0) return noChanges();
   if (cells.length > MAX_BULK_CELLS) {
     throw new DomainError(`אפשר לעדכן עד ${MAX_BULK_CELLS} משבצות בפעולה אחת`);
   }
@@ -436,7 +436,7 @@ export async function clearWeek(actor: Actor, teamId: string, weekStartInput: Is
     date: String(d.get("date")),
     entry: null,
   }));
-  if (ops.length === 0) return { changed: 0, skipped: [], pendingApprovalIds: [] };
+  if (ops.length === 0) return noChanges();
   return applyChanges(actor, ops, { mode: "bulk" });
 }
 

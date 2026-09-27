@@ -33,7 +33,7 @@ export function BulkEditor({
   agentCount: number;
   dayCount: number;
   onClose: () => void;
-  onDone: (result: { summary: string; skipped: SkippedOp[] }) => void;
+  onDone: (result: { summary: string; skipped: SkippedOp[]; undoToken?: string | null }) => void;
 }) {
   const shifts = catalog.shifts.filter((s) => s.isActive);
   const locations = catalog.locations.filter((l) => l.isActive);

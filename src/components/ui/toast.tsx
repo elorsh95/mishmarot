@@ -5,25 +5,35 @@ import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 type ToastTone = "success" | "error" | "info";
-interface ToastItem {
+export interface ToastOptions {
+  /** A button in the toast, e.g. "ביטול" to undo what was just done. */
+  action?: { label: string; onClick: () => void };
+}
+interface ToastItem extends ToastOptions {
   id: number;
   tone: ToastTone;
   message: string;
 }
 
-const ToastContext = createContext<(tone: ToastTone, message: string) => void>(() => {});
+type Push = (tone: ToastTone, message: string, options?: ToastOptions) => void;
+const ToastContext = createContext<Push>(() => {});
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
 
-  const push = useCallback((tone: ToastTone, message: string) => {
-    const id = Date.now() + Math.random();
-    setItems((list) => [...list.slice(-3), { id, tone, message }]);
-    setTimeout(
-      () => setItems((list) => list.filter((t) => t.id !== id)),
-      tone === "error" ? 7000 : 4000,
-    );
-  }, []);
+  const dismiss = useCallback(
+    (id: number) => setItems((list) => list.filter((t) => t.id !== id)),
+    [],
+  );
+  const push = useCallback<Push>(
+    (tone, message, options = {}) => {
+      const id = Date.now() + Math.random();
+      setItems((list) => [...list.slice(-3), { id, tone, message, ...options }]);
+      // A toast with a button stays longer, so there is time to use it.
+      setTimeout(() => dismiss(id), options.action ? 12000 : tone === "error" ? 7000 : 4000);
+    },
+    [dismiss],
+  );
 
   return (
     <ToastContext.Provider value={push}>
@@ -54,9 +64,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 )}
               />
               <span className="flex-1 whitespace-pre-line">{t.message}</span>
+              {t.action ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    dismiss(t.id);
+                    t.action!.onClick();
+                  }}
+                  className="-my-1 shrink-0 rounded-md px-2 py-1 text-sm font-semibold text-primary hover:bg-primary/10"
+                >
+                  {t.action.label}
+                </button>
+              ) : null}
               <button
                 type="button"
-                onClick={() => setItems((list) => list.filter((x) => x.id !== t.id))}
+                onClick={() => dismiss(t.id)}
                 className="text-fg-muted hover:text-fg"
                 aria-label="סגירה"
               >
@@ -73,8 +95,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 export function useToast() {
   const push = useContext(ToastContext);
   return {
-    success: (m: string) => push("success", m),
-    error: (m: string) => push("error", m),
-    info: (m: string) => push("info", m),
+    success: (m: string, o?: ToastOptions) => push("success", m, o),
+    error: (m: string, o?: ToastOptions) => push("error", m, o),
+    info: (m: string, o?: ToastOptions) => push("info", m, o),
   };
 }

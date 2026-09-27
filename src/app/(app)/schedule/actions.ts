@@ -13,6 +13,14 @@ import {
   setWeekStatus,
 } from "@/modules/schedule/service";
 import type { ApplyResult } from "@/modules/schedule/engine";
+import { cellHistory } from "@/modules/schedule/history";
+import { saveUndo, undoBatch } from "@/modules/schedule/undo";
+import {
+  applyTemplate,
+  deleteTemplate,
+  listTemplates,
+  saveTemplate,
+} from "@/modules/schedule/templates";
 import { createShareLink, getShareLink, revokeShareLink } from "@/modules/sharing/service";
 
 const date = z.string().refine(isIsoDate, "תאריך לא תקין");
@@ -77,6 +85,7 @@ export async function copyPreviousWeekAction(teamId: string, weekStart: string) 
             ? "אין מה להעתיק: השבוע הקודם ריק או שהימים כבר משובצים"
             : summarize(result, "הועתקו"),
         skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
       };
     },
     { revalidate: REVALIDATE },
@@ -93,6 +102,7 @@ export async function fillDefaultsAction(teamId: string, weekStart: string) {
             ? "לא נמצאו ימים ריקים לנציגים עם ברירת מחדל"
             : summarize(result, "נוספו"),
         skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
       };
     },
     { revalidate: REVALIDATE },
@@ -103,7 +113,11 @@ export async function clearWeekAction(teamId: string, weekStart: string) {
   return runAction(
     async (actor) => {
       const result = await clearWeek(actor, teamId, date.parse(weekStart));
-      return { summary: summarize(result, "הוסרו"), skipped: result.skipped };
+      return {
+        summary: summarize(result, "הוסרו"),
+        skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
+      };
     },
     { revalidate: REVALIDATE },
   );
@@ -138,6 +152,21 @@ export async function setAbsenceRangeAction(
             ? "לא נמצאו ימים לעדכון בטווח"
             : summarize(result, "עודכנו"),
         skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
+      };
+    },
+    { revalidate: REVALIDATE },
+  );
+}
+
+export async function undoAction(token: unknown) {
+  return runAction(
+    async (actor) => {
+      const result = await undoBatch(actor, z.string().min(1).parse(token));
+      return {
+        summary: summarize(result, "שוחזרו"),
+        skipped: result.skipped,
+        undoToken: null,
       };
     },
     { revalidate: REVALIDATE },
@@ -156,6 +185,7 @@ export async function setEntriesAction(cells: unknown, entry: unknown) {
       return {
         summary: summarize(result, parsed ? "עודכנו" : "הוסרו"),
         skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
       };
     },
     { revalidate: REVALIDATE },
@@ -178,5 +208,49 @@ export async function revokeShareLinkAction(teamId: string) {
   return runAction((actor) => revokeShareLink(actor, teamIdSchema.parse(teamId)), {
     revalidate: ["/audit"],
     message: "הקישור בוטל. מי שקיבל אותו כבר לא יוכל לצפות בסידור",
+  });
+}
+
+const idSchema = z.string().min(1);
+
+export async function listTemplatesAction(teamId: string) {
+  return runAction((actor) => listTemplates(actor, idSchema.parse(teamId)), { revalidate: [] });
+}
+
+export async function saveTemplateAction(teamId: string, weekStart: string, name: unknown) {
+  return runAction(
+    (actor) =>
+      saveTemplate(actor, idSchema.parse(teamId), date.parse(weekStart), z.string().parse(name)),
+    { revalidate: ["/audit"], message: "התבנית נשמרה" },
+  );
+}
+
+export async function applyTemplateAction(templateId: string, weekStart: string) {
+  return runAction(
+    async (actor) => {
+      const result = await applyTemplate(actor, idSchema.parse(templateId), date.parse(weekStart));
+      return {
+        summary:
+          result.changed === 0 && result.skipped.length === 0
+            ? "אין מה להוסיף: הימים כבר משובצים או שהתבנית לא מתאימה לשבוע"
+            : summarize(result, "נוספו"),
+        skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
+      };
+    },
+    { revalidate: REVALIDATE },
+  );
+}
+
+export async function deleteTemplateAction(templateId: string) {
+  return runAction((actor) => deleteTemplate(actor, idSchema.parse(templateId)), {
+    revalidate: ["/audit"],
+    message: "התבנית נמחקה",
+  });
+}
+
+export async function cellHistoryAction(agentId: string, day: string) {
+  return runAction((actor) => cellHistory(actor, idSchema.parse(agentId), date.parse(day)), {
+    revalidate: [],
   });
 }
