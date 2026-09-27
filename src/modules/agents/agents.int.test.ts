@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { col, COLLECTIONS } from "@/lib/firebase/collections";
 import { actors, baseData, clearEmulator, createAgentDoc, createTeamDoc } from "@/test/helpers";
 import { agentImportTemplate, importAgents } from "./import";
-import { createAgent, listAgents } from "./service";
+import { createAgent, deleteAgent, listAgents } from "./service";
+import { setDayEntry } from "@/modules/schedule/service";
 
 const csv = (text: string) => ({ name: "agents.csv", bytes: new TextEncoder().encode(text) });
 
@@ -134,5 +135,38 @@ describe("importing agents", () => {
     );
     const noTeam = await importAgents(actors.admin(), csv("שם\nא ב"), { dryRun: true });
     expect(noTeam.rows[0]).toMatchObject({ status: "error", message: "לא צוין צוות" });
+  });
+});
+
+describe("deleting agents", () => {
+  it("deletes an agent with no history and keeps those who were scheduled", async () => {
+    const tm = actors.teamManager(["renault"]);
+    const fresh = await createAgent(tm, {
+      firstName: "כפול",
+      lastName: "מייבוא",
+      teamId: "renault",
+    });
+    const used = await createAgent(tm, { firstName: "דנה", lastName: "לוי", teamId: "renault" });
+    await setDayEntry(tm, used, "2030-03-03", {
+      kind: "absence",
+      absenceTypeId: (await baseData()).vacation.id,
+    });
+
+    await deleteAgent(tm, fresh);
+    expect((await col(COLLECTIONS.agents).doc(fresh).get()).exists).toBe(false);
+    const audit = await col(COLLECTIONS.auditLogs).where("action", "==", "agent.delete").get();
+    expect(audit.size).toBe(1);
+
+    await expect(deleteAgent(tm, used)).rejects.toThrow(/היסטוריה/);
+    expect((await col(COLLECTIONS.agents).doc(used).get()).exists).toBe(true);
+  });
+
+  it("needs agents.manage on the agent's team", async () => {
+    const other = await createAgent(actors.admin(), {
+      firstName: "א",
+      lastName: "ב",
+      teamId: "daccia",
+    });
+    await expect(deleteAgent(actors.teamManager(["renault"]), other)).rejects.toThrow(/הרשאה/);
   });
 });

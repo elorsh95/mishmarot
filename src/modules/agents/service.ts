@@ -171,6 +171,39 @@ export async function updateAgent(actor: Actor, agentId: string, input: AgentInp
   }
 }
 
+/**
+ * Deletes an agent added by mistake (e.g. a duplicate from a file import). Only agents with no
+ * history can be deleted: any schedule entry, approval or transfer means the agent appears in past
+ * schedules and reports, and deactivating is the way to hide them.
+ */
+export async function deleteAgent(actor: Actor, agentId: string) {
+  await db().runTransaction(async (tx) => {
+    const ref = col(COLLECTIONS.agents).doc(agentId);
+    const agent = fromDocOrNull<Agent>(await tx.get(ref));
+    if (!agent) throw new NotFoundError("הנציג לא נמצא");
+    assertCanForTeam(actor, "agents.manage", agent.teamId);
+    const history = await Promise.all(
+      [COLLECTIONS.assignments, COLLECTIONS.approvals, COLLECTIONS.transfers].map((c) =>
+        tx.get(col(c).where("agentId", "==", agentId).limit(1)),
+      ),
+    );
+    if (history.some((snap) => !snap.empty)) {
+      throw new DomainError(
+        `ל${agentName(agent)} יש היסטוריה בסידור, ולכן אי אפשר למחוק אותו. אפשר להשבית אותו במקום`,
+      );
+    }
+    tx.delete(ref);
+    auditInTx(tx, actor, {
+      action: "agent.delete",
+      entityType: "agent",
+      entityId: agentId,
+      teamId: agent.teamId,
+      summary: `נמחק הנציג ${agentName(agent)}`,
+      before: agent,
+    });
+  });
+}
+
 export interface TeamMoveRefs {
   agentRef: FirebaseFirestore.DocumentReference;
   assignmentRefs: FirebaseFirestore.DocumentReference[];

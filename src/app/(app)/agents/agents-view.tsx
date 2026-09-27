@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Home, Pencil, Plus, Search, Upload } from "lucide-react";
+import { Home, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import { cn } from "@/lib/cn";
 import { WEEKDAY_SHORT } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
 import type { Catalog } from "@/modules/catalog/service";
-import { saveAgentAction } from "./actions";
+import { deleteAgentAction, saveAgentAction } from "./actions";
 import { ImportAgentsDialog } from "./import-dialog";
 
 interface TeamOption {
@@ -275,6 +275,7 @@ function AgentDialog({
     notes: agent?.notes ?? "",
   });
   const { run, pending, error, fieldErrors } = useAction();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
@@ -311,6 +312,17 @@ function AgentDialog({
       title={agent ? `עריכת נציג: ${agentName(agent)}` : "נציג חדש"}
       footer={
         <>
+          {agent ? (
+            <Button
+              variant="ghost"
+              className="me-auto text-danger"
+              onClick={() => setConfirmDelete(true)}
+              disabled={pending}
+            >
+              <Trash2 className="h-4 w-4" />
+              מחיקה
+            </Button>
+          ) : null}
           <Button variant="secondary" onClick={onClose} disabled={pending}>
             ביטול
           </Button>
@@ -320,6 +332,17 @@ function AgentDialog({
         </>
       }
     >
+      {agent && confirmDelete ? (
+        <DeleteAgentDialog
+          agent={agent}
+          onClose={() => setConfirmDelete(false)}
+          onDeleted={onClose}
+          onDeactivate={() => {
+            setConfirmDelete(false);
+            set("isActive", false);
+          }}
+        />
+      ) : null}
       <div className="space-y-5">
         <FormError error={error} />
         <div className="grid gap-4 sm:grid-cols-3">
@@ -491,6 +514,62 @@ function AgentDialog({
         <Field label="הערות" htmlFor="notes">
           <Textarea id="notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} />
         </Field>
+      </div>
+    </Dialog>
+  );
+}
+
+function DeleteAgentDialog({
+  agent,
+  onClose,
+  onDeleted,
+  onDeactivate,
+}: {
+  agent: Agent;
+  onClose: () => void;
+  onDeleted: () => void;
+  onDeactivate: () => void;
+}) {
+  const { run, pending, error } = useAction();
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      size="sm"
+      title="מחיקת נציג"
+      description={agentName(agent)}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={pending}>
+            ביטול
+          </Button>
+          {error ? (
+            <Button onClick={onDeactivate}>השבתה במקום</Button>
+          ) : (
+            <Button
+              variant="danger"
+              loading={pending}
+              onClick={() => run(() => deleteAgentAction(agent.id), { onSuccess: onDeleted })}
+            >
+              מחיקה
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-3 text-sm">
+        <FormError error={error} />
+        {error ? (
+          <p className="text-fg-muted">
+            בהשבתה הנציג יוסר מהסידור ומהרשימות, וההיסטוריה שלו נשמרת. אחרי הלחיצה יש לשמור את
+            הטופס.
+          </p>
+        ) : (
+          <p>
+            למחוק את הנציג לצמיתות? אפשר למחוק רק נציג שעדיין לא שובץ, למשל נציג שנוסף בטעות או
+            כפילות מייבוא.
+          </p>
+        )}
       </div>
     </Dialog>
   );
