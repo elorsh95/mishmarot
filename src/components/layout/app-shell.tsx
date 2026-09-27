@@ -22,6 +22,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { BrandMark } from "@/components/brand";
+import type { Theme } from "@/components/theme";
+import { ThemeSwitch } from "@/components/theme-switch";
 import { cn } from "@/lib/cn";
 import { NAV_GROUP_LABELS, type NavGroup, type NavIcon, type NavItem } from "./nav-items";
 
@@ -46,10 +48,11 @@ export interface ShellProps {
   logout: () => Promise<void>;
   /** The company logo (settings), shown instead of the app mark. */
   logoUrl: string | null;
+  theme: Theme;
   children: ReactNode;
 }
 
-export function AppShell({ items, badges, user, logout, logoUrl, children }: ShellProps) {
+export function AppShell({ items, badges, user, logout, logoUrl, theme, children }: ShellProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -109,6 +112,9 @@ export function AppShell({ items, badges, user, logout, logoUrl, children }: She
       <div className="mb-2 px-3">
         <p className="truncate text-sm font-semibold">{user.fullName}</p>
         <p className="truncate text-xs text-fg-muted">{user.roleName}</p>
+      </div>
+      <div className="mb-2 px-1">
+        <ThemeSwitch initial={theme} />
       </div>
       <Link
         href="/account"

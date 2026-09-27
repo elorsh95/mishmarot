@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { AppShell } from "@/components/layout/app-shell";
+import { parseTheme, THEME_COOKIE } from "@/components/theme";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { requireSessionUser } from "@/modules/auth/session";
 import { getBranding } from "@/modules/branding/service";
@@ -28,6 +30,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       user={{ fullName: user.fullName, roleName: user.roleName }}
       logout={logoutAction}
       logoUrl={logoUrl(branding)}
+      theme={parseTheme((await cookies()).get(THEME_COOKIE)?.value)}
     >
       {children}
     </AppShell>

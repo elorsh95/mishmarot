@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Heebo } from "next/font/google";
+import { cookies } from "next/headers";
+import { THEME_COOKIE, parseTheme } from "@/components/theme";
 import { ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
 
@@ -13,12 +15,22 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#3b5bdb",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#3b5bdb" },
+    { media: "(prefers-color-scheme: dark)", color: "#171c25" },
+  ],
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // The theme is rendered on the server, so the page never flashes the other one.
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
   return (
-    <html lang="he" dir="rtl" className={`${heebo.variable} h-full antialiased`}>
+    <html
+      lang="he"
+      dir="rtl"
+      data-theme={theme === "system" ? undefined : theme}
+      className={`${heebo.variable} h-full antialiased`}
+    >
       <body className="min-h-full font-sans">
         <ToastProvider>{children}</ToastProvider>
       </body>
