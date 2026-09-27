@@ -53,7 +53,8 @@ export function SharedSchedule({
         </Button>
       </div>
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <div ref={sheet} className="w-max min-w-full bg-white p-3" dir="rtl">
+        {/* Always light: it is also saved as an image to send around. */}
+        <div ref={sheet} className="w-max min-w-full bg-white p-3 text-gray-900" dir="rtl">
           <div className="mb-2 flex items-center justify-between gap-4">
             <p className="text-sm font-bold">
               סידור עבודה · {data.teamName} · {data.label}
