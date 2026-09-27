@@ -7,7 +7,9 @@ import {
   clearWeek,
   copyPreviousWeek,
   fillFromDefaults,
+  setAbsenceRange,
   setDayEntry,
+  setEntries,
   setWeekStatus,
 } from "@/modules/schedule/service";
 import type { ApplyResult } from "@/modules/schedule/engine";
@@ -101,6 +103,59 @@ export async function clearWeekAction(teamId: string, weekStart: string) {
     async (actor) => {
       const result = await clearWeek(actor, teamId, date.parse(weekStart));
       return { summary: summarize(result, "הוסרו"), skipped: result.skipped };
+    },
+    { revalidate: REVALIDATE },
+  );
+}
+
+const absenceSchema = z.object({
+  kind: z.literal("absence"),
+  absenceTypeId: z.string().min(1, "יש לבחור סוג היעדרות"),
+  note: z.string().max(300).optional(),
+});
+
+export async function setAbsenceRangeAction(
+  agentId: string,
+  from: string,
+  to: string,
+  entry: unknown,
+  workDaysOnly: boolean,
+) {
+  return runAction(
+    async (actor) => {
+      const result = await setAbsenceRange(
+        actor,
+        z.string().min(1).parse(agentId),
+        date.parse(from),
+        date.parse(to),
+        absenceSchema.parse(entry),
+        { workDaysOnly: Boolean(workDaysOnly) },
+      );
+      return {
+        summary:
+          result.changed === 0 && result.skipped.length === 0
+            ? "לא נמצאו ימים לעדכון בטווח"
+            : summarize(result, "עודכנו"),
+        skipped: result.skipped,
+      };
+    },
+    { revalidate: REVALIDATE },
+  );
+}
+
+const cellsSchema = z
+  .array(z.object({ agentId: z.string().min(1), date }))
+  .min(1, "לא נבחרו משבצות");
+
+export async function setEntriesAction(cells: unknown, entry: unknown) {
+  return runAction(
+    async (actor) => {
+      const parsed = entrySchema.parse(entry);
+      const result = await setEntries(actor, cellsSchema.parse(cells), parsed);
+      return {
+        summary: summarize(result, parsed ? "עודכנו" : "הוסרו"),
+        skipped: result.skipped,
+      };
     },
     { revalidate: REVALIDATE },
   );

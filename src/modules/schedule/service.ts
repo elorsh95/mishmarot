@@ -348,6 +348,69 @@ export async function fillFromDefaults(actor: Actor, teamId: string, weekStartIn
   return applyChanges(actor, ops, { mode: "bulk" });
 }
 
+/** Longest absence range that can be entered at once. */
+export const MAX_RANGE_DAYS = 62;
+/** Most cells a single bulk edit may touch. */
+export const MAX_BULK_CELLS = 600;
+
+/**
+ * Records one absence (e.g. a vacation) for every day in a date range.
+ * Saturdays are skipped unless some shift runs on them, holidays (closed days) are skipped, and with
+ * workDaysOnly only the agent's usual working days are filled. Existing entries on those days are
+ * replaced; locked or published weeks are reported as skipped, like any bulk change.
+ */
+export async function setAbsenceRange(
+  actor: Actor,
+  agentId: string,
+  from: IsoDate,
+  to: IsoDate,
+  entry: Extract<EntryInput, { kind: "absence" }>,
+  { workDaysOnly }: { workDaysOnly: boolean },
+): Promise<ApplyResult> {
+  if (to < from) throw new DomainError("תאריך הסיום מוקדם מתאריך ההתחלה");
+  const dates: IsoDate[] = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) {
+    dates.push(d);
+    if (dates.length > MAX_RANGE_DAYS) {
+      throw new DomainError(`אפשר להזין עד ${MAX_RANGE_DAYS} ימים בפעולה אחת`);
+    }
+  }
+  const [agentSnap, catalog, dayInfo] = await Promise.all([
+    col(COLLECTIONS.agents).doc(agentId).get(),
+    getCatalog(),
+    getDayInfos(dates),
+  ]);
+  if (!agentSnap.exists) throw new NotFoundError("הנציג לא נמצא");
+  const agent = fromDoc<Agent>(agentSnap);
+  assertCanForTeam(actor, "schedule.edit", agent.teamId);
+  const hasSaturday = catalog.shifts.some((s) => s.isActive && s.daysOfWeek.includes(6));
+  const ops: ChangeOp[] = dates
+    .filter((d) => dayInfo[d]?.kind !== "closed")
+    .filter((d) => hasSaturday || weekdayOf(d) !== 6)
+    .filter((d) => !workDaysOnly || (agent.defaultDays ?? []).includes(weekdayOf(d)))
+    .map((date) => ({ agentId, date, entry }));
+  if (ops.length === 0) return { changed: 0, skipped: [], pendingApprovalIds: [] };
+  return applyChanges(actor, ops, { mode: "bulk" });
+}
+
+/** Sets the same entry (or clears, with null) on many agent-days at once. */
+export async function setEntries(
+  actor: Actor,
+  cells: Array<{ agentId: string; date: IsoDate }>,
+  entry: EntryInput | null,
+): Promise<ApplyResult> {
+  if (cells.length === 0) return { changed: 0, skipped: [], pendingApprovalIds: [] };
+  if (cells.length > MAX_BULK_CELLS) {
+    throw new DomainError(`אפשר לעדכן עד ${MAX_BULK_CELLS} משבצות בפעולה אחת`);
+  }
+  // Permissions, locks and day rules are checked per cell by the engine.
+  return applyChanges(
+    actor,
+    cells.map((c) => ({ ...c, entry })),
+    { mode: "bulk" },
+  );
+}
+
 /** Clears every entry of the team's week (editable days only). */
 export async function clearWeek(actor: Actor, teamId: string, weekStartInput: IsoDate) {
   assertCanForTeam(actor, "schedule.edit", teamId);

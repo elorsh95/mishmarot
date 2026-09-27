@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
+  CheckSquare,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -15,6 +16,7 @@ import {
   Send,
   Undo2,
   Wand2,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +24,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/form";
 import { EmptyState } from "@/components/ui/page-header";
+import { useToast } from "@/components/ui/toast";
 import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
 import {
@@ -46,6 +49,7 @@ import {
   fillDefaultsAction,
   setWeekStatusAction,
 } from "./actions";
+import { BulkEditor } from "./bulk-editor";
 import { CellEditor, QuotaBadge, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
 
@@ -67,7 +71,11 @@ export function ScheduleBoard({
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [skipped, setSkipped] = useState<SkippedOp[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkEditing, setBulkEditing] = useState(false);
   const bulk = useAction();
+  const toast = useToast();
 
   const editable = view.lockReason === null;
   const href = (teamId: string, weekStart: string) => `/schedule?team=${teamId}&week=${weekStart}`;
@@ -77,19 +85,58 @@ export function ScheduleBoard({
   const usageOf = (agentId: string, date: string) =>
     view.quotaUsage[agentId]?.find((u) => u.month === monthOf(date));
 
-  function openCell(agent: Agent, date: string) {
+  const cellKey = (agentId: string, date: string) => `${agentId}|${date}`;
+  const selectable = (agent: Agent & { inTeam: boolean }, date: string) =>
+    editable && agent.isActive && agent.inTeam && view.dayInfo[date]?.kind !== "closed";
+
+  /** Toggles a group of cells: selects all of them, or clears them if all were selected. */
+  function toggleCells(keys: string[]) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const all = keys.length > 0 && keys.every((k) => next.has(k));
+      for (const k of keys) {
+        if (all) next.delete(k);
+        else next.add(k);
+      }
+      return next;
+    });
+  }
+  const selection: Selection = {
+    active: selecting,
+    has: (agentId, date) => selected.has(cellKey(agentId, date)),
+    selectable,
+    toggleColumn: (date) =>
+      toggleCells(view.agents.filter((a) => selectable(a, date)).map((a) => cellKey(a.id, date))),
+    toggleRow: (agent) =>
+      toggleCells(view.days.filter((d) => selectable(agent, d)).map((d) => cellKey(agent.id, d))),
+  };
+  const selectedCells = [...selected].map((k) => {
+    const [agentId, date] = k.split("|");
+    return { agentId, date };
+  });
+  function endSelection() {
+    setSelecting(false);
+    setSelected(new Set());
+  }
+
+  function openCell(agent: Agent & { inTeam: boolean }, date: string) {
+    if (selecting) {
+      if (selectable(agent, date)) toggleCells([cellKey(agent.id, date)]);
+      return;
+    }
     const entry = entryOf(agent.id, date);
     if (!editable && !entry) return;
     if (editable && !agent.isActive && !entry) return;
     setEditing({ agent, date, entry });
   }
 
+  function showResult(data: { summary: string; skipped: SkippedOp[] }) {
+    toast.success(data.summary);
+    if (data.skipped.length > 0) setSkipped(data.skipped);
+  }
+
   function runBulk(action: () => ReturnType<typeof copyPreviousWeekAction>) {
-    bulk.run(action, {
-      onSuccess: (data) => {
-        if (data.skipped.length > 0) setSkipped(data.skipped);
-      },
-    });
+    bulk.run(action, { onSuccess: showResult });
   }
 
   const pendingCount = Object.values(view.assignments).filter(
@@ -207,6 +254,17 @@ export function ScheduleBoard({
               <Eraser className="h-4 w-4" />
               ניקוי השבוע
             </Button>
+            {mode === "agents" ? (
+              <Button
+                variant={selecting ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => (selecting ? endSelection() : setSelecting(true))}
+                title="בחירת כמה נציגים או ימים ושיבוץ של כולם יחד"
+              >
+                <CheckSquare className="h-4 w-4" />
+                {selecting ? "סיום בחירה" : "בחירה מרובה"}
+              </Button>
+            ) : null}
           </>
         ) : null}
 
@@ -313,6 +371,12 @@ export function ScheduleBoard({
         </Card>
       ) : mode === "agents" ? (
         <>
+          {selecting ? (
+            <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary">
+              לחצו על משבצות כדי לבחור אותן. לחיצה על יום בכותרת בוחרת את כל הנציגים באותו יום,
+              ולחיצה על שם נציג בוחרת את כל השבוע שלו.
+            </p>
+          ) : null}
           <AgentsGrid
             view={view}
             catalog={catalog}
@@ -320,6 +384,7 @@ export function ScheduleBoard({
             entryOf={entryOf}
             usageOf={usageOf}
             onCell={openCell}
+            selection={selection}
           />
           <DayList
             view={view}
@@ -328,6 +393,7 @@ export function ScheduleBoard({
             entryOf={entryOf}
             usageOf={usageOf}
             onCell={openCell}
+            selection={selection}
           />
         </>
       ) : (
@@ -348,6 +414,34 @@ export function ScheduleBoard({
           day={view.dayInfo[editing.date]}
           readOnly={!editable}
           onClose={() => setEditing(null)}
+          onRangeResult={showResult}
+        />
+      ) : null}
+
+      {selecting && selected.size > 0 ? (
+        <div className="sticky bottom-3 z-20 mx-auto flex w-fit flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 shadow-lg">
+          <span className="text-sm font-medium">נבחרו {selected.size} משבצות</span>
+          <Button size="sm" onClick={() => setBulkEditing(true)}>
+            שיבוץ לנבחרים
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+            <X className="h-4 w-4" />
+            ניקוי בחירה
+          </Button>
+        </div>
+      ) : null}
+
+      {bulkEditing ? (
+        <BulkEditor
+          cells={selectedCells}
+          catalog={catalog}
+          agentCount={new Set(selectedCells.map((c) => c.agentId)).size}
+          dayCount={new Set(selectedCells.map((c) => c.date)).size}
+          onClose={() => setBulkEditing(false)}
+          onDone={(data) => {
+            endSelection();
+            showResult(data);
+          }}
         />
       ) : null}
 
@@ -400,13 +494,24 @@ export function ScheduleBoard({
   );
 }
 
+type ViewAgent = WeekView["agents"][number];
+
+interface Selection {
+  active: boolean;
+  has: (agentId: string, date: string) => boolean;
+  selectable: (agent: ViewAgent, date: string) => boolean;
+  toggleColumn: (date: string) => void;
+  toggleRow: (agent: ViewAgent) => void;
+}
+
 interface GridProps {
   view: WeekView;
   catalog: Catalog;
   editable: boolean;
   entryOf: (agentId: string, date: string) => Assignment | null;
   usageOf: (agentId: string, date: string) => WeekView["quotaUsage"][string][number] | undefined;
-  onCell: (agent: Agent, date: string) => void;
+  onCell: (agent: ViewAgent, date: string) => void;
+  selection: Selection;
 }
 
 function DayHeader({ date, today, info }: { date: string; today: string; info?: DayInfo }) {
@@ -443,7 +548,7 @@ function HolidayTag({ info }: { info?: DayInfo }) {
   );
 }
 
-function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell }: GridProps) {
+function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell, selection }: GridProps) {
   const months = [...new Set(view.days.map(monthOf))];
   return (
     <Card className="hidden overflow-hidden md:block">
@@ -462,7 +567,18 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell }: GridP
                     d === view.today ? "bg-primary/10" : "bg-muted",
                   )}
                 >
-                  <DayHeader date={d} today={view.today} info={view.dayInfo[d]} />
+                  {selection.active ? (
+                    <button
+                      type="button"
+                      onClick={() => selection.toggleColumn(d)}
+                      className="w-full rounded-md hover:bg-surface"
+                      title="בחירת כל הנציגים ביום זה"
+                    >
+                      <DayHeader date={d} today={view.today} info={view.dayInfo[d]} />
+                    </button>
+                  ) : (
+                    <DayHeader date={d} today={view.today} info={view.dayInfo[d]} />
+                  )}
                 </th>
               ))}
             </tr>
@@ -476,7 +592,18 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell }: GridP
                 <th className="sticky start-0 z-10 border-b border-e border-border bg-surface px-3 py-2 text-start font-normal">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{agentName(agent)}</p>
+                      {selection.active ? (
+                        <button
+                          type="button"
+                          onClick={() => selection.toggleRow(agent)}
+                          className="truncate font-medium text-primary hover:underline"
+                          title="בחירת כל השבוע של הנציג"
+                        >
+                          {agentName(agent)}
+                        </button>
+                      ) : (
+                        <p className="truncate font-medium">{agentName(agent)}</p>
+                      )}
                       <p className="text-xs text-fg-subtle">
                         {[
                           agent.employeeNumber,
@@ -500,8 +627,10 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell }: GridP
                 {view.days.map((date) => {
                   const entry = entryOf(agent.id, date);
                   const closed = view.dayInfo[date]?.kind === "closed";
-                  const clickable =
-                    entry || (editable && agent.isActive && agent.inTeam && !closed);
+                  const clickable = selection.active
+                    ? selection.selectable(agent, date)
+                    : entry || (editable && agent.isActive && agent.inTeam && !closed);
+                  const isSelected = selection.active && selection.has(agent.id, date);
                   return (
                     <td
                       key={date}
@@ -509,6 +638,8 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell }: GridP
                         "border-b border-border p-1.5 text-center align-middle",
                         date === view.today && "bg-primary/5",
                         closed && "bg-muted/60",
+                        isSelected &&
+                          "bg-primary/15 outline outline-2 -outline-offset-2 outline-primary",
                       )}
                     >
                       {clickable ? (
@@ -597,7 +728,7 @@ function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog })
 }
 
 /** Mobile: one day at a time. */
-function DayList({ view, catalog, editable, entryOf, usageOf, onCell }: GridProps) {
+function DayList({ view, catalog, editable, entryOf, usageOf, onCell, selection }: GridProps) {
   const initial = view.days.includes(view.today) ? view.today : view.days[0];
   const [day, setDay] = useState(initial);
   const c = coverageFor(view, catalog, day);
@@ -632,6 +763,12 @@ function DayList({ view, catalog, editable, entryOf, usageOf, onCell }: GridProp
         ))}
       </div>
       <HolidayTag info={view.dayInfo[day]} />
+      {selection.active ? (
+        <Button size="sm" variant="secondary" onClick={() => selection.toggleColumn(day)}>
+          <CheckSquare className="h-4 w-4" />
+          בחירת כל הנציגים ביום זה
+        </Button>
+      ) : null}
       <p className="text-xs text-fg-muted">
         בוקר: {c.morning}
         {shiftWeekday(day, view.dayInfo[day]) !== 5 ? ` · ערב: ${c.evening}` : ""}
@@ -640,16 +777,21 @@ function DayList({ view, catalog, editable, entryOf, usageOf, onCell }: GridProp
       <Card className="divide-y divide-border">
         {view.agents.map((agent) => {
           const entry = entryOf(agent.id, day);
-          const clickable =
-            entry ||
-            (editable && agent.isActive && agent.inTeam && view.dayInfo[day]?.kind !== "closed");
+          const clickable = selection.active
+            ? selection.selectable(agent, day)
+            : entry ||
+              (editable && agent.isActive && agent.inTeam && view.dayInfo[day]?.kind !== "closed");
+          const isSelected = selection.active && selection.has(agent.id, day);
           return (
             <button
               key={agent.id}
               type="button"
               disabled={!clickable}
               onClick={() => onCell(agent, day)}
-              className="flex w-full items-center gap-3 px-3 py-2.5 text-start disabled:opacity-60"
+              className={cn(
+                "flex w-full items-center gap-3 px-3 py-2.5 text-start disabled:opacity-60",
+                isSelected && "bg-primary/15",
+              )}
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{agentName(agent)}</p>
