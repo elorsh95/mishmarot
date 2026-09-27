@@ -147,7 +147,23 @@ firestore.indexes.json     אינדקסים מורכבים
 
 **תהליך העבודה:** פיתוח ב-branch נפרד, ואז PR אל `dev`. אחרי merge, App Hosting פורס אוטומטית לסביבת dev ובודקים שם. אחרי אישור פותחים PR מ-`dev` אל `main`, ובסיום ה-merge הגרסה עולה ל-production.
 
-GitHub Actions (`.github/workflows/ci.yml`) מריץ בכל PR את lint, typecheck, בדיקות יחידה, בדיקות אינטגרציה ו-build. ב-push ל-`dev` או ל-`main` הוא גם פורס את כללי האבטחה והאינדקסים של Firestore לפרויקט המתאים.
+GitHub Actions (`.github/workflows/ci.yml`) מריץ בכל PR את lint, typecheck, בדיקות יחידה, בדיקות אינטגרציה ו-build. ב-push ל-`dev` או ל-`main` הוא גם פורס את כללי האבטחה והאינדקסים של Firestore לפרויקט המתאים, ומוודא שקיים גיבוי יומי.
+
+### גיבוי יומי
+Firestore מגבה את מסד הנתונים פעם ביום, ושומר כל גיבוי 30 יום. את התזמון יוצר או מעדכן שלב בפריסה, `npm run configure-backups`. ל-service account של הפריסה צריך להוסיף את התפקיד **Cloud Datastore Backup Schedules Admin**.
+
+- **רשימת הגיבויים:** Google Cloud Console ← Firestore ← Disaster recovery. או בשורת הפקודה:
+  ```bash
+  gcloud firestore backups list --project=<PROJECT_ID>
+  ```
+- **שחזור:** השחזור נעשה תמיד **למסד נתונים חדש**, כך שהנתונים הנוכחיים לא נדרסים:
+  ```bash
+  gcloud firestore databases restore --project=<PROJECT_ID> \
+    --source-backup=projects/<PROJECT_ID>/locations/<LOCATION>/backups/<BACKUP_ID> \
+    --destination-database=restored-YYYYMMDD
+  ```
+  אחרי השחזור בודקים את הנתונים במסד החדש, ומעבירים ממנו את מה שצריך. אפשר גם לפנות למפתח.
+- **עלות:** לפי נפח הגיבוי. בגודל של מוקד מדובר באגורות בחודש.
 
 ## מדריך הקמה ב-Firebase (פעם אחת לכל סביבה)
 
