@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   CheckSquare,
   ChevronLeft,
@@ -74,6 +74,15 @@ export function ScheduleBoard({
   canViewAgents: boolean;
 }) {
   const router = useRouter();
+  const highlight = useSearchParams().get("agent");
+  // Coming from quick search: bring the agent's row into view (desktop table or phone list).
+  useEffect(() => {
+    if (!highlight) return;
+    const row = [`agent-row-${highlight}`, `agent-item-${highlight}`]
+      .map((id) => document.getElementById(id))
+      .find((el) => el && el.offsetParent !== null);
+    row?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [highlight]);
   const [mode, setMode] = useState<ViewMode>("agents");
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [skipped, setSkipped] = useState<SkippedOp[] | null>(null);
@@ -479,6 +488,7 @@ export function ScheduleBoard({
             usageOf={usageOf}
             onCell={openCell}
             selection={selection}
+            highlight={highlight}
           />
           <DayList
             view={view}
@@ -488,6 +498,7 @@ export function ScheduleBoard({
             usageOf={usageOf}
             onCell={openCell}
             selection={selection}
+            highlight={highlight}
           />
         </>
       ) : (
@@ -625,6 +636,8 @@ interface GridProps {
   usageOf: (agentId: string, date: string) => WeekView["quotaUsage"][string][number] | undefined;
   onCell: (agent: ViewAgent, date: string) => void;
   selection: Selection;
+  /** An agent to point out (from quick search: ?agent=). */
+  highlight: string | null;
 }
 
 function DayHeader({ date, today, info }: { date: string; today: string; info?: DayInfo }) {
@@ -661,7 +674,16 @@ function HolidayTag({ info }: { info?: DayInfo }) {
   );
 }
 
-function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell, selection }: GridProps) {
+function AgentsGrid({
+  view,
+  catalog,
+  editable,
+  entryOf,
+  usageOf,
+  onCell,
+  selection,
+  highlight,
+}: GridProps) {
   return (
     <Card className="hidden overflow-hidden md:block">
       <div className="overflow-x-auto">
@@ -699,9 +721,18 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell, selecti
             {view.agents.map((agent) => (
               <tr
                 key={agent.id}
-                className={cn(!agent.isActive || !agent.inTeam ? "opacity-60" : "")}
+                id={`agent-row-${agent.id}`}
+                className={cn(
+                  !agent.isActive || !agent.inTeam ? "opacity-60" : "",
+                  highlight === agent.id && "bg-primary/10",
+                )}
               >
-                <th className="sticky start-0 z-10 border-b border-e border-border bg-surface px-3 py-2 text-start font-normal">
+                <th
+                  className={cn(
+                    "sticky start-0 z-10 border-b border-e border-border bg-surface px-3 py-2 text-start font-normal",
+                    highlight === agent.id && "border-s-4 border-s-primary",
+                  )}
+                >
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       {selection.active ? (
@@ -870,7 +901,16 @@ function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog })
 }
 
 /** Mobile: one day at a time. */
-function DayList({ view, catalog, editable, entryOf, usageOf, onCell, selection }: GridProps) {
+function DayList({
+  view,
+  catalog,
+  editable,
+  entryOf,
+  usageOf,
+  onCell,
+  selection,
+  highlight,
+}: GridProps) {
   const initial = view.days.includes(view.today) ? view.today : view.days[0];
   const [day, setDay] = useState(initial);
   const c = shortfall(view, catalog, day);
@@ -937,12 +977,14 @@ function DayList({ view, catalog, editable, entryOf, usageOf, onCell, selection 
           return (
             <button
               key={agent.id}
+              id={`agent-item-${agent.id}`}
               type="button"
               disabled={!clickable}
               onClick={() => onCell(agent, day)}
               className={cn(
                 "flex w-full items-center gap-3 px-3 py-2.5 text-start disabled:opacity-60",
                 isSelected && "bg-primary/15",
+                highlight === agent.id && "border-s-4 border-s-primary bg-primary/10",
               )}
             >
               <div className="min-w-0 flex-1">

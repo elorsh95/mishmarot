@@ -13,6 +13,7 @@ import {
   KeyRound,
   LogOut,
   Menu,
+  Search,
   Settings,
   ShieldCheck,
   UserCog,
@@ -25,6 +26,7 @@ import { BrandMark } from "@/components/brand";
 import type { Theme } from "@/components/theme";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { cn } from "@/lib/cn";
+import { CommandPalette } from "./command-palette";
 import { NAV_GROUP_LABELS, type NavGroup, type NavIcon, type NavItem } from "./nav-items";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
@@ -55,6 +57,7 @@ export interface ShellProps {
 export function AppShell({ items, badges, user, logout, logoUrl, theme, children }: ShellProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
@@ -92,6 +95,22 @@ export function AppShell({ items, badges, user, logout, logoUrl, theme, children
   const groups = (Object.keys(NAV_GROUP_LABELS) as NavGroup[])
     .map((group) => ({ group, items: items.filter((i) => i.group === group) }))
     .filter((g) => g.items.length > 0);
+  const searchButton = (
+    <button
+      type="button"
+      onClick={() => {
+        setOpen(false);
+        setSearching(true);
+      }}
+      className="mx-3 mt-1 flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-1.5 text-sm text-fg-subtle hover:text-fg"
+    >
+      <Search className="h-4 w-4" />
+      <span className="flex-1 text-start">חיפוש…</span>
+      <kbd className="rounded border border-border bg-surface px-1 text-[10px]" dir="ltr">
+        Ctrl K
+      </kbd>
+    </button>
+  );
   const nav = (
     <nav className="flex flex-1 flex-col gap-4 p-3">
       {groups.map(({ group, items: groupItems }) => (
@@ -148,6 +167,7 @@ export function AppShell({ items, badges, user, logout, logoUrl, theme, children
       {/* Desktop sidebar (on the right in RTL) */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-e border-border bg-surface lg:flex">
         {brand}
+        {searchButton}
         <div className="flex flex-1 flex-col overflow-y-auto">{nav}</div>
         {footer}
       </aside>
@@ -172,7 +192,14 @@ export function AppShell({ items, badges, user, logout, logoUrl, theme, children
           {logoUrl ? <BrandMark logoUrl={logoUrl} size="sm" /> : null}
           <span className="font-bold">משמרות</span>
         </Link>
-        <span className="w-9" />
+        <button
+          type="button"
+          onClick={() => setSearching(true)}
+          className="rounded-lg p-2 hover:bg-muted"
+          aria-label="חיפוש"
+        >
+          <Search className="h-5 w-5" />
+        </button>
       </header>
 
       {open ? (
@@ -197,6 +224,7 @@ export function AppShell({ items, badges, user, logout, logoUrl, theme, children
       ) : null}
 
       <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">{children}</main>
+      <CommandPalette items={items} open={searching} onOpenChange={setSearching} />
     </div>
   );
 }
