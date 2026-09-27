@@ -9,7 +9,9 @@ import {
   copyPreviousWeek,
   fillFromDefaults,
   getWeekView,
+  setAbsenceRange,
   setDayEntry,
+  setEntries,
   setWeekStatus,
 } from "./service";
 import { assignmentId, type Assignment } from "./types";
@@ -322,5 +324,105 @@ describe("holidays", () => {
     expect(copied.skipped).toEqual([]);
     expect(await entry("a3", eve)).toBeNull();
     expect(await entry("a3", holiday)).toBeNull();
+  });
+});
+
+describe("absence for a date range", () => {
+  const vacation = () => ({ kind: "absence" as const, absenceTypeId: base.vacation.id });
+
+  it("fills the working days of the range and replaces existing entries", async () => {
+    const tm = actors.teamManager(["renault"]);
+    await setDayEntry(tm, "a1", "2030-03-04", office());
+    // Sunday 3.3 to Tuesday 12.3: two weeks, Friday and Saturday in the middle
+    const result = await setAbsenceRange(tm, "a1", "2030-03-03", "2030-03-12", vacation(), {
+      workDaysOnly: true,
+    });
+    const days = (await col(COLLECTIONS.assignments).where("agentId", "==", "a1").get()).docs
+      .map((d) => fromDoc<Assignment>(d))
+      .filter((a) => a.kind === "absence")
+      .map((a) => a.date)
+      .sort();
+    // The agent works Sunday–Thursday: Friday 8.3 and Saturday 9.3 are left out
+    expect(days).toEqual([
+      "2030-03-03",
+      "2030-03-04",
+      "2030-03-05",
+      "2030-03-06",
+      "2030-03-07",
+      "2030-03-10",
+      "2030-03-11",
+      "2030-03-12",
+    ]);
+    expect(result.changed).toBe(8);
+
+    // Without workDaysOnly Friday is included; Saturday still isn't (no Saturday shifts)
+    await setAbsenceRange(tm, "a1", "2030-03-08", "2030-03-09", vacation(), {
+      workDaysOnly: false,
+    });
+    expect((await entry("a1", "2030-03-08"))?.kind).toBe("absence");
+    expect(await entry("a1", "2030-03-09")).toBeNull();
+  });
+
+  it("skips holidays, reports published weeks and checks permissions", async () => {
+    const tm = actors.teamManager(["renault"]);
+    await setWeekStatus(actors.admin(), "renault", "2030-04-21", "published");
+    // Pesach week (holiday Thursday 18.4) into a published week
+    const result = await setAbsenceRange(tm, "a1", "2030-04-14", "2030-04-22", vacation(), {
+      workDaysOnly: true,
+    });
+    expect(await entry("a1", "2030-04-18")).toBeNull();
+    expect((await entry("a1", "2030-04-17"))?.kind).toBe("absence");
+    expect(result.skipped.map((s) => s.date)).toEqual(["2030-04-21", "2030-04-22"]);
+
+    await expect(
+      setAbsenceRange(tm, "a2", "2030-03-03", "2030-03-04", vacation(), { workDaysOnly: true }),
+    ).rejects.toThrow(/הרשאה/);
+    await expect(
+      setAbsenceRange(tm, "a1", "2030-03-10", "2030-03-03", vacation(), { workDaysOnly: true }),
+    ).rejects.toThrow(/מוקדם/);
+    await expect(
+      setAbsenceRange(tm, "a1", "2030-01-01", "2030-06-01", vacation(), { workDaysOnly: true }),
+    ).rejects.toThrow(/עד/);
+  });
+});
+
+describe("bulk scheduling", () => {
+  it("sets one entry on many agent-days and reports cells it can't change", async () => {
+    const tm = actors.teamManager(["renault"]);
+    await createAgentDoc("a3", "renault");
+    const cells = [
+      { agentId: "a1", date: "2030-03-03" },
+      { agentId: "a3", date: "2030-03-03" },
+      { agentId: "a1", date: "2030-03-08" }, // Friday: no evening shift
+      { agentId: "a2", date: "2030-03-03" }, // another team
+    ];
+    const evening = {
+      kind: "shift" as const,
+      shiftId: base.evening.id,
+      locationId: base.office.id,
+    };
+    const result = await setEntries(tm, cells, evening);
+    expect(result.changed).toBe(2);
+    expect(result.skipped.map((s) => `${s.agentId} ${s.date}`).sort()).toEqual([
+      "a1 2030-03-08",
+      "a2 2030-03-03",
+    ]);
+    expect((await entry("a3", "2030-03-03"))?.shiftId).toBe(base.evening.id);
+
+    // Home for several days goes through the quota like single edits
+    const homeDays = ["2030-03-04", "2030-03-05", "2030-03-06"].map((date) => ({
+      agentId: "a1",
+      date,
+    }));
+    const home = await setEntries(tm, homeDays, {
+      kind: "shift",
+      shiftId: base.morning.id,
+      locationId: base.home.id,
+    });
+    expect(home.pendingApprovalIds).toHaveLength(1);
+
+    const cleared = await setEntries(tm, cells.slice(0, 2), null);
+    expect(cleared.changed).toBe(2);
+    expect(await entry("a1", "2030-03-03")).toBeNull();
   });
 });

@@ -5,7 +5,7 @@ import { AlertTriangle, Home } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Field, FormError, Input } from "@/components/ui/form";
+import { Checkbox, Field, FormError, Input } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
@@ -15,7 +15,8 @@ import { shiftRunsOn, type DayInfo } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
 import type { ApprovalInfo, QuotaUsage } from "@/modules/schedule/service";
 import { QUOTA_STATUS_LABELS, type Assignment } from "@/modules/schedule/types";
-import { setEntryAction } from "./actions";
+import type { SkippedOp } from "@/modules/schedule/engine";
+import { setAbsenceRangeAction, setEntryAction } from "./actions";
 import { tint } from "./entry-chip";
 
 export interface EditTarget {
@@ -32,6 +33,7 @@ export function CellEditor({
   day,
   readOnly: readOnlyProp,
   onClose,
+  onRangeResult,
 }: {
   target: EditTarget;
   catalog: Catalog;
@@ -41,6 +43,8 @@ export function CellEditor({
   day: DayInfo | undefined;
   readOnly: boolean;
   onClose: () => void;
+  /** Called after an absence range was saved, with the summary and any skipped days. */
+  onRangeResult: (result: { summary: string; skipped: SkippedOp[] }) => void;
 }) {
   const { agent, date, entry } = target;
   const closed = day?.kind === "closed";
@@ -68,6 +72,10 @@ export function CellEditor({
   const [locationId, setLocationId] = useState(defaultLocation);
   const [absenceTypeId, setAbsenceTypeId] = useState(entry?.absenceTypeId ?? absences[0]?.id ?? "");
   const [note, setNote] = useState(entry?.note ?? "");
+  // Absence for a range: from this date up to rangeEnd (inclusive).
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [workDaysOnly, setWorkDaysOnly] = useState(true);
+  const isRange = kind === "absence" && rangeEnd !== "" && rangeEnd > date;
   const { run, pending, error } = useAction();
   const toast = useToast();
 
@@ -79,6 +87,25 @@ export function CellEditor({
   const willNeedApproval = isNewQuotaDay && usage && usage.used >= usage.quota;
 
   function save() {
+    if (isRange) {
+      run(
+        () =>
+          setAbsenceRangeAction(
+            agent.id,
+            date,
+            rangeEnd,
+            { kind, absenceTypeId, note },
+            workDaysOnly,
+          ),
+        {
+          onSuccess: (data) => {
+            onClose();
+            onRangeResult(data);
+          },
+        },
+      );
+      return;
+    }
     const payload =
       kind === "shift" ? { kind, shiftId, locationId, note } : { kind, absenceTypeId, note };
     run(() => setEntryAction(agent.id, date, payload), {
@@ -241,6 +268,32 @@ export function CellEditor({
           </Field>
         )}
 
+        {kind === "absence" && !readOnly ? (
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <Field
+              label="עד תאריך (לא חובה)"
+              htmlFor="range-end"
+              hint="למשל חופשה של כמה ימים: אותה היעדרות תירשם בכל הימים עד התאריך הזה. חגים ושבתות מדולגים."
+            >
+              <Input
+                id="range-end"
+                type="date"
+                min={date}
+                value={rangeEnd}
+                onChange={(e) => setRangeEnd(e.target.value)}
+                className="max-w-48"
+              />
+            </Field>
+            {isRange ? (
+              <Checkbox
+                label={`רק בימי העבודה הקבועים של ${agent.firstName}`}
+                checked={workDaysOnly}
+                onChange={(e) => setWorkDaysOnly(e.target.checked)}
+              />
+            ) : null}
+          </div>
+        ) : null}
+
         <Field label="הערה" htmlFor="note">
           <Input
             id="note"
@@ -256,7 +309,7 @@ export function CellEditor({
   );
 }
 
-function ChoiceGroup({
+export function ChoiceGroup({
   options,
   value,
   onChange,
