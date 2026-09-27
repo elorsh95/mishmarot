@@ -11,6 +11,7 @@ export type AuditEntityType =
   | "absenceType"
   | "settings"
   | "transfer"
+  | "calendar"
   | "auth";
 
 export interface AuditEntry {
@@ -42,5 +43,6 @@ export const AUDIT_ENTITY_LABELS: Record<AuditEntityType, string> = {
   absenceType: "סוג היעדרות",
   settings: "הגדרות",
   transfer: "העברת נציג",
+  calendar: "לוח חגים",
   auth: "התחברות",
 };

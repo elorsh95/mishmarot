@@ -13,6 +13,7 @@ import { DomainError } from "@/lib/errors";
 import { emit } from "@/lib/events";
 import { agentName, type Agent } from "@/modules/agents/types";
 import { auditInTx } from "@/modules/audit/service";
+import { getDayInfosInTx } from "@/modules/calendar/service";
 import { getCatalog, type Catalog } from "@/modules/catalog/service";
 import type { Actor } from "@/modules/permissions/check";
 import { getSettingsInTx } from "@/modules/settings/service";
@@ -111,6 +112,10 @@ async function applyInTx(
 
   // ---------- reads (all before any write) ----------
   const settings = await getSettingsInTx(tx);
+  const dayInfos = await getDayInfosInTx(
+    tx,
+    ops.filter((o) => o.entry).map((o) => o.date),
+  );
   const agentIds = [...new Set(ops.map((o) => o.agentId))];
   const agentSnaps = await tx.getAll(...agentIds.map((id) => col(COLLECTIONS.agents).doc(id)));
   const agents = new Map(
@@ -165,7 +170,7 @@ async function applyInTx(
         skip(op, `הנציג ${agentName(agent)} אינו פעיל`);
         continue;
       }
-      const error = entryError(catalog, op.entry, op.date);
+      const error = entryError(catalog, op.entry, op.date, dayInfos[op.date]);
       if (error) {
         skip(op, error);
         continue;

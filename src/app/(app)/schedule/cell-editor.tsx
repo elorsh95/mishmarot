@@ -9,8 +9,9 @@ import { Field, FormError, Input } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
-import { formatDateWithDay, formatMonth, MONTH_NAMES, monthOf, weekdayOf } from "@/lib/dates";
+import { formatDateWithDay, formatMonth, MONTH_NAMES, monthOf } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
+import { shiftRunsOn, type DayInfo } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
 import type { ApprovalInfo, QuotaUsage } from "@/modules/schedule/service";
 import { QUOTA_STATUS_LABELS, type Assignment } from "@/modules/schedule/types";
@@ -28,20 +29,25 @@ export function CellEditor({
   catalog,
   usage,
   approval,
-  readOnly,
+  day,
+  readOnly: readOnlyProp,
   onClose,
 }: {
   target: EditTarget;
   catalog: Catalog;
   usage: QuotaUsage | undefined;
   approval: ApprovalInfo | undefined;
+  /** Holiday or eve on this date, if any. */
+  day: DayInfo | undefined;
   readOnly: boolean;
   onClose: () => void;
 }) {
   const { agent, date, entry } = target;
-  const weekday = weekdayOf(date);
+  const closed = day?.kind === "closed";
+  // On a closed day an existing entry can only be removed.
+  const readOnly = readOnlyProp || (closed && !entry);
   const shifts = catalog.shifts.filter(
-    (s) => (s.isActive && s.daysOfWeek.includes(weekday)) || s.id === entry?.shiftId,
+    (s) => (s.isActive && shiftRunsOn(s, date, day)) || s.id === entry?.shiftId,
   );
   const locations = catalog.locations.filter((l) => l.isActive || l.id === entry?.locationId);
   const absences = catalog.absenceTypes.filter((a) => a.isActive || a.id === entry?.absenceTypeId);
@@ -114,15 +120,33 @@ export function CellEditor({
             <Button variant="secondary" onClick={onClose} disabled={pending}>
               ביטול
             </Button>
-            <Button onClick={save} loading={pending}>
-              שמירה
-            </Button>
+            {closed ? null : (
+              <Button onClick={save} loading={pending}>
+                שמירה
+              </Button>
+            )}
           </>
         )
       }
     >
       <div className="space-y-4">
         <FormError error={error} />
+
+        {day && day.kind !== "regular" ? (
+          <div
+            className={cn(
+              "rounded-lg border px-3 py-2 text-sm",
+              closed ? "border-danger/30 bg-danger/10" : "border-warning/40 bg-warning/10",
+            )}
+          >
+            <p className="font-semibold">{day.name ?? (closed ? "חג" : "ערב חג")}</p>
+            <p className="text-fg-muted">
+              {closed
+                ? "המוקד סגור ביום זה ולא ניתן לשבץ. אפשר רק להסיר שיבוץ קיים."
+                : "ערב חג: אפשר לשבץ רק למשמרות של יום שישי."}
+            </p>
+          </div>
+        ) : null}
 
         {entry && entry.quotaStatus !== "none" && entry.quotaStatus !== "within_quota" ? (
           <div

@@ -4,7 +4,14 @@ import { updateAgent, getAgent } from "@/modules/agents/service";
 import { decideApproval, listApprovals } from "@/modules/approvals/service";
 import { actors, baseData, clearEmulator, createAgentDoc, createTeamDoc } from "@/test/helpers";
 import { applyChanges } from "./engine";
-import { copyPreviousWeek, getWeekView, setDayEntry, setWeekStatus } from "./service";
+import { clearSpecialDay, setSpecialDay } from "@/modules/calendar/service";
+import {
+  copyPreviousWeek,
+  fillFromDefaults,
+  getWeekView,
+  setDayEntry,
+  setWeekStatus,
+} from "./service";
 import { assignmentId, type Assignment } from "./types";
 
 let base: Awaited<ReturnType<typeof baseData>>;
@@ -231,5 +238,89 @@ describe("transfers", () => {
 
     expect((await getAgent("a2"))?.teamId).toBe("renault");
     expect((await entry("a2", "2030-03-03"))?.teamId).toBe("renault");
+  });
+});
+
+describe("holidays", () => {
+  // Pesach 2030: Wednesday 17.4 is Erev Pesach, Thursday 18.4 is the holiday.
+  const eve = "2030-04-17";
+  const holiday = "2030-04-18";
+  const evening = () => ({
+    kind: "shift" as const,
+    shiftId: base.evening.id,
+    locationId: base.office.id,
+  });
+
+  it("nothing can be scheduled on a holiday, and only Friday shifts on its eve", async () => {
+    const tm = actors.teamManager(["renault"]);
+    await expect(setDayEntry(tm, "a1", holiday, office())).rejects.toThrow(/סגור/);
+    await expect(
+      setDayEntry(tm, "a1", holiday, { kind: "absence", absenceTypeId: base.vacation.id }),
+    ).rejects.toThrow(/סגור/);
+    await expect(setDayEntry(tm, "a1", eve, evening())).rejects.toThrow(/ערב חג/);
+    await setDayEntry(tm, "a1", eve, office());
+    expect((await entry("a1", eve))?.shiftId).toBe(base.morning.id);
+
+    const view = await getWeekView(tm, "renault", "2030-04-14");
+    expect(view.dayInfo[eve]).toMatchObject({ kind: "eve", name: "ערב פסח" });
+    expect(view.dayInfo[holiday]).toMatchObject({ kind: "closed", name: "פסח א׳" });
+    expect(view.dayInfo["2030-04-15"]).toMatchObject({ kind: "regular", name: null });
+  });
+
+  it("a special day overrides the calendar and can be reset", async () => {
+    const tm = actors.teamManager(["renault"]);
+    await expect(setSpecialDay(tm, { date: holiday, kind: "regular" })).rejects.toThrow(/הרשאה/);
+    await setSpecialDay(actors.centerManager(), { date: holiday, kind: "regular" });
+    await setDayEntry(tm, "a1", holiday, evening());
+
+    await setSpecialDay(actors.centerManager(), {
+      date: "2030-04-15",
+      kind: "closed",
+      name: "יום גיבוש",
+    });
+    const view = await getWeekView(tm, "renault", "2030-04-14");
+    expect(view.dayInfo["2030-04-15"]).toMatchObject({
+      kind: "closed",
+      name: "יום גיבוש",
+      source: "custom",
+    });
+    expect(view.dayInfo[holiday]).toMatchObject({
+      kind: "regular",
+      name: "פסח א׳",
+      source: "custom",
+    });
+
+    await clearSpecialDay(actors.centerManager(), holiday);
+    await expect(setDayEntry(tm, "a1", "2030-04-18", office())).rejects.toThrow(/סגור/);
+    const audit = await col(COLLECTIONS.auditLogs).where("entityType", "==", "calendar").get();
+    expect(audit.size).toBe(3);
+  });
+
+  it("filling from defaults and copying a week skip holidays quietly", async () => {
+    const tm = actors.teamManager(["renault"]);
+    await col(COLLECTIONS.agents)
+      .doc("a1")
+      .update({
+        defaultShiftId: base.evening.id,
+        defaultLocationId: base.office.id,
+        defaultDays: [0, 1, 2, 3, 4],
+      });
+    const filled = await fillFromDefaults(tm, "renault", "2030-04-14");
+    expect(filled.skipped).toEqual([]);
+    const view = await getWeekView(tm, "renault", "2030-04-14");
+    expect(
+      Object.values(view.assignments)
+        .map((a) => a.date)
+        .sort(),
+    ).toEqual(["2030-04-14", "2030-04-15", "2030-04-16"]);
+
+    // a3 worked evenings on Wednesday and Thursday last week. Copying into the Pesach week
+    // leaves the eve (no evening shift) and the holiday empty, without reporting errors.
+    await createAgentDoc("a3", "renault");
+    for (const d of ["2030-04-10", "2030-04-11"]) await setDayEntry(tm, "a3", d, evening());
+    const copied = await copyPreviousWeek(tm, "renault", "2030-04-14");
+    expect(copied.skipped).toEqual([]);
+    expect(await entry("a3", eve)).toBeNull();
+    expect(await entry("a3", holiday)).toBeNull();
   });
 });

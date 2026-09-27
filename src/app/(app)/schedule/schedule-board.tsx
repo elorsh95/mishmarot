@@ -34,6 +34,7 @@ import {
   weekdayOf,
 } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
+import { shiftRunsOn, shiftWeekday, type DayInfo } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
 import type { SkippedOp } from "@/modules/schedule/engine";
 import type { WeekView } from "@/modules/schedule/service";
@@ -328,6 +329,7 @@ export function ScheduleBoard({
           approval={
             editing.entry?.approvalId ? view.approvals[editing.entry.approvalId] : undefined
           }
+          day={view.dayInfo[editing.date]}
           readOnly={!editable}
           onClose={() => setEditing(null)}
         />
@@ -391,12 +393,37 @@ interface GridProps {
   onCell: (agent: Agent, date: string) => void;
 }
 
-function DayHeader({ date, today }: { date: string; today: string }) {
+function DayHeader({ date, today, info }: { date: string; today: string; info?: DayInfo }) {
   return (
     <div className={cn("flex flex-col items-center", date === today && "text-primary")}>
       <span className="text-sm font-semibold">{WEEKDAY_NAMES[weekdayOf(date)]}</span>
       <span className="text-xs text-fg-muted">{formatDayMonth(date)}</span>
+      <HolidayTag info={info} />
     </div>
+  );
+}
+
+/** Holiday name under the date: red for a closed day, amber for an eve, grey otherwise. */
+function HolidayTag({ info }: { info?: DayInfo }) {
+  if (!info?.name && info?.kind !== "closed" && info?.kind !== "eve") return null;
+  const label =
+    info.kind === "closed"
+      ? `${info.name ?? "חג"} · סגור`
+      : info.kind === "eve"
+        ? `${info.name ?? "ערב חג"} · כמו שישי`
+        : info.name;
+  return (
+    <span
+      className={cn(
+        "mt-0.5 max-w-28 truncate text-[11px] font-medium",
+        info.kind === "closed" && "text-danger",
+        info.kind === "eve" && "text-warning",
+        info.kind === "regular" && "text-fg-muted",
+      )}
+      title={label ?? undefined}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -419,7 +446,7 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell }: GridP
                     d === view.today ? "bg-primary/10" : "bg-muted",
                   )}
                 >
-                  <DayHeader date={d} today={view.today} />
+                  <DayHeader date={d} today={view.today} info={view.dayInfo[d]} />
                 </th>
               ))}
             </tr>
@@ -456,13 +483,16 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell }: GridP
                 </th>
                 {view.days.map((date) => {
                   const entry = entryOf(agent.id, date);
-                  const clickable = entry || (editable && agent.isActive && agent.inTeam);
+                  const closed = view.dayInfo[date]?.kind === "closed";
+                  const clickable =
+                    entry || (editable && agent.isActive && agent.inTeam && !closed);
                   return (
                     <td
                       key={date}
                       className={cn(
                         "border-b border-border p-1.5 text-center align-middle",
                         date === view.today && "bg-primary/5",
+                        closed && "bg-muted/60",
                       )}
                     >
                       {clickable ? (
@@ -525,12 +555,19 @@ function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog })
       </th>
       {view.days.map((date) => {
         const c = coverageFor(view, catalog, date);
+        if (view.dayInfo[date]?.kind === "closed" && c.morning + c.evening + c.absent === 0) {
+          return (
+            <td key={date} className="px-2 py-2 text-center text-xs text-fg-muted">
+              סגור
+            </td>
+          );
+        }
         return (
           <td key={date} className="px-2 py-2 text-center text-xs text-fg-muted">
             <div>
               בוקר: <strong className="text-fg">{c.morning}</strong>
             </div>
-            {weekdayOf(date) !== 5 ? (
+            {shiftWeekday(date, view.dayInfo[date]) !== 5 ? (
               <div>
                 ערב: <strong className="text-fg">{c.evening}</strong>
               </div>
@@ -567,18 +604,29 @@ function DayList({ view, catalog, editable, entryOf, usageOf, onCell }: GridProp
             <span className={cn("text-[11px]", d === day ? "text-white/80" : "text-fg-muted")}>
               {formatDayMonth(d)}
             </span>
+            {view.dayInfo[d] && view.dayInfo[d].kind !== "regular" ? (
+              <span
+                className={cn(
+                  "mt-0.5 h-1.5 w-1.5 rounded-full",
+                  view.dayInfo[d].kind === "closed" ? "bg-danger" : "bg-warning",
+                )}
+              />
+            ) : null}
           </button>
         ))}
       </div>
+      <HolidayTag info={view.dayInfo[day]} />
       <p className="text-xs text-fg-muted">
         בוקר: {c.morning}
-        {weekdayOf(day) !== 5 ? ` · ערב: ${c.evening}` : ""}
+        {shiftWeekday(day, view.dayInfo[day]) !== 5 ? ` · ערב: ${c.evening}` : ""}
         {c.absent ? ` · נעדרים: ${c.absent}` : ""}
       </p>
       <Card className="divide-y divide-border">
         {view.agents.map((agent) => {
           const entry = entryOf(agent.id, day);
-          const clickable = entry || (editable && agent.isActive && agent.inTeam);
+          const clickable =
+            entry ||
+            (editable && agent.isActive && agent.inTeam && view.dayInfo[day]?.kind !== "closed");
           return (
             <button
               key={agent.id}
@@ -624,7 +672,7 @@ function CoverageTable({ view, catalog }: { view: WeekView; catalog: Catalog }) 
               </th>
               {view.days.map((d) => (
                 <th key={d} className="min-w-36 border-b border-border bg-muted px-2 py-2">
-                  <DayHeader date={d} today={view.today} />
+                  <DayHeader date={d} today={view.today} info={view.dayInfo[d]} />
                 </th>
               ))}
             </tr>
@@ -643,7 +691,7 @@ function CoverageTable({ view, catalog }: { view: WeekView; catalog: Catalog }) 
                   ) : null}
                 </th>
                 {view.days.map((date) => {
-                  if (!shift.daysOfWeek.includes(weekdayOf(date))) {
+                  if (!shiftRunsOn(shift, date, view.dayInfo[date])) {
                     return <td key={date} className="border-b border-border bg-muted/40" />;
                   }
                   const people = view.agents.filter(
