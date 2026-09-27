@@ -1,12 +1,11 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { useMemo, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/page-header";
-import { Table, Td, Th } from "@/components/ui/table";
-import { cn } from "@/lib/cn";
+import { SortTh, useSort } from "@/components/ui/sortable";
+import { Table, Td } from "@/components/ui/table";
 import { WEEKDAY_NAMES } from "@/lib/dates";
 import { QUOTA_PERIOD_LABELS } from "@/modules/schedule/types";
 import {
@@ -30,17 +29,12 @@ interface Column<R> {
   className?: string;
 }
 
-type Sort = { key: string; dir: "asc" | "desc" } | null;
-
 const sum =
   <R,>(value: (r: R) => number) =>
   (rows: R[]) =>
     rows.reduce((n, r) => n + value(r), 0);
 
-/**
- * A table whose headers sort it: first click sorts text A→Z and numbers high→low, the second
- * click reverses, the third returns to the original order.
- */
+/** A table whose headers sort it (see useSort), with an optional totals row. */
 function SortableTable<R>({
   columns,
   rows,
@@ -52,64 +46,26 @@ function SortableTable<R>({
   rowKey: (row: R) => string;
   rowClassName?: (row: R) => string | undefined;
 }) {
-  const [sort, setSort] = useState<Sort>(null);
-  const sorted = useMemo(() => {
-    const col = sort && columns.find((c) => c.key === sort.key);
-    if (!sort || !col) return rows;
-    const factor = sort.dir === "asc" ? 1 : -1;
-    return [...rows].sort((a, b) => {
-      const [x, y] = [col.value(a), col.value(b)];
-      const diff =
-        typeof x === "number" && typeof y === "number"
-          ? x - y
-          : String(x).localeCompare(String(y), "he");
-      return diff * factor;
-    });
-  }, [rows, columns, sort]);
-
-  const toggle = (col: Column<R>) => {
-    const numeric = rows.length > 0 && typeof col.value(rows[0]) === "number";
-    const first = numeric ? "desc" : "asc";
-    setSort((s) =>
-      s?.key !== col.key
-        ? { key: col.key, dir: first }
-        : s.dir === first
-          ? { key: col.key, dir: first === "asc" ? "desc" : "asc" }
-          : null,
-    );
-  };
+  const values = useMemo(() => Object.fromEntries(columns.map((c) => [c.key, c.value])), [columns]);
+  const { sorted, sort, toggle } = useSort(rows, values);
   const hasTotals = columns.some((c) => c.total);
 
   return (
     <Table>
       <thead>
         <tr>
-          {columns.map((c) => {
-            const active = sort?.key === c.key ? sort.dir : null;
-            const Icon = active === "asc" ? ArrowUp : active === "desc" ? ArrowDown : ArrowUpDown;
-            return (
-              <Th
-                key={c.key}
-                className={cn("p-0", c.className)}
-                aria-sort={
-                  active === "asc" ? "ascending" : active === "desc" ? "descending" : undefined
-                }
-              >
-                <button
-                  type="button"
-                  onClick={() => toggle(c)}
-                  className={cn(
-                    "inline-flex w-full items-center gap-1 px-3 py-2.5 hover:text-fg",
-                    c.className?.includes("text-center") && "justify-center",
-                    active && "text-fg",
-                  )}
-                >
-                  {c.label}
-                  <Icon className={cn("h-3 w-3 shrink-0", !active && "opacity-40")} />
-                </button>
-              </Th>
-            );
-          })}
+          {columns.map((c) => (
+            <SortTh
+              key={c.key}
+              sortKey={c.key}
+              sort={sort}
+              onSort={toggle}
+              className={c.className}
+              center={c.className?.includes("text-center")}
+            >
+              {c.label}
+            </SortTh>
+          ))}
         </tr>
       </thead>
       <tbody>
