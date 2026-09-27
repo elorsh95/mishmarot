@@ -10,6 +10,7 @@ export type NavIcon =
   | "users"
   | "roles"
   | "settings"
+  | "reports"
   | "audit";
 
 export interface NavItem {
@@ -33,6 +34,7 @@ export const NAV_ITEMS: NavItem[] = [
     badge: "approvals",
   },
   { href: "/agents", label: "נציגים", icon: "agents", anyOf: ["agents.view"] },
+  { href: "/reports", label: "דוחות", icon: "reports", anyOf: ["schedule.view"] },
   {
     href: "/transfers",
     label: "העברות נציגים",
