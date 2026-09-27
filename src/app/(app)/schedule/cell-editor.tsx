@@ -352,21 +352,40 @@ export function ChoiceGroup({
   );
 }
 
+const usageTitle = (u: QuotaUsage) =>
+  `${u.period === "week" ? "ימי בית בשבוע זה" : `ימי בית ב${formatMonth(u.key)}`}: ${u.used} מתוך ${u.quota}`;
+
+/**
+ * The quota usage worth showing when a week spans two months: the fuller one (over the quota
+ * first), with every period in the tooltip.
+ */
+export function QuotaSummaryBadge({ usages }: { usages: QuotaUsage[] | undefined }) {
+  if (!usages?.length) return null;
+  const ratio = (u: QuotaUsage) => (u.quota > 0 ? u.used / u.quota : u.used > 0 ? Infinity : 0);
+  const top = usages.reduce((a, b) => (ratio(b) > ratio(a) ? b : a));
+  return (
+    <QuotaBadge
+      usage={top}
+      showLabel={usages.length > 1}
+      title={usages.map(usageTitle).join("\n")}
+    />
+  );
+}
+
 export function QuotaBadge({
   usage,
   showLabel = false,
+  title,
 }: {
   usage: QuotaUsage | undefined;
   showLabel?: boolean;
+  title?: string;
 }) {
   if (!usage) return null;
   const over = usage.used > usage.quota;
   const full = usage.used === usage.quota;
   return (
-    <Badge
-      tone={over ? "danger" : full ? "warning" : "neutral"}
-      title={usage.period === "week" ? "ימי בית בשבוע זה" : `ימי בית ב${formatMonth(usage.key)}`}
-    >
+    <Badge tone={over ? "danger" : full ? "warning" : "neutral"} title={title ?? usageTitle(usage)}>
       <Home className="h-3 w-3" />
       {showLabel ? <span className="font-normal">{usage.label}</span> : null}
       <span dir="ltr">

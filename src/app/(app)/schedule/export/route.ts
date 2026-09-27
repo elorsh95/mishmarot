@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { isIsoDate, todayIso, weekStartOf } from "@/lib/dates";
 import { xlsxResponse } from "@/lib/xlsx-response";
+import { getLogo } from "@/modules/branding/service";
 import { getSessionUser } from "@/modules/auth/session";
 import { getCatalog } from "@/modules/catalog/service";
 import { weekScheduleXlsx } from "@/modules/reports/excel";
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
   ]);
   const label = teamParam === "all" ? "כל הצוותים" : selected[0].name;
   return xlsxResponse(
-    await weekScheduleXlsx(views, catalog),
+    await weekScheduleXlsx(views, catalog, (await getLogo())?.bytes ?? null),
     `סידור עבודה - ${label} ${weekStart}.xlsx`,
     `schedule-${weekStart}.xlsx`,
   );

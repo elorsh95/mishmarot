@@ -19,11 +19,13 @@ export function WeekSheet({
   catalog,
   printedAt,
   printedBy,
+  logoUrl,
 }: {
   view: WeekView;
   catalog: Catalog;
   printedAt: string;
   printedBy: string;
+  logoUrl: string | null;
 }) {
   const agents = view.agents.filter((a) => a.inTeam && (a.isActive || hasEntries(view, a.id)));
 
@@ -34,16 +36,22 @@ export function WeekSheet({
           <h1 className="text-xl font-bold">סידור עבודה – צוות {view.team.name}</h1>
           <p className="text-sm">שבוע {view.label}</p>
         </div>
-        <div className="text-end text-[10px] leading-4 text-gray-600">
-          <p>
-            סטטוס:{" "}
-            <strong className="text-black">
-              {view.week.status === "published" ? "פורסם" : "טיוטה"}
-            </strong>
-          </p>
-          <p>
-            הופק ע״י {printedBy} · {printedAt}
-          </p>
+        <div className="flex items-end gap-4">
+          <div className="text-end text-[10px] leading-4 text-gray-600">
+            <p>
+              סטטוס:{" "}
+              <strong className="text-black">
+                {view.week.status === "published" ? "פורסם" : "טיוטה"}
+              </strong>
+            </p>
+            <p>
+              הופק ע״י {printedBy} · {printedAt}
+            </p>
+          </div>
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- printed as is
+            <img src={logoUrl} alt="לוגו" className="h-10 max-w-40 object-contain" />
+          ) : null}
         </div>
       </header>
 

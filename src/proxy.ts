@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/action"];
-/** Read-only schedule links shared with agents (see modules/sharing). */
-const PUBLIC_PREFIXES = ["/s/"];
+/** Read-only schedule links shared with agents (see modules/sharing), and the company logo. */
+const PUBLIC_PREFIXES = ["/s/", "/branding/"];
 
 /**
  * Optimistic check only: redirects to /login when there is no session cookie.

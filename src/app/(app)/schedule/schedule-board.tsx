@@ -53,7 +53,7 @@ import {
   setWeekStatusAction,
 } from "./actions";
 import { BulkEditor } from "./bulk-editor";
-import { CellEditor, QuotaBadge, type EditTarget } from "./cell-editor";
+import { CellEditor, QuotaBadge, QuotaSummaryBadge, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
 import { ShareDialog } from "./share-dialog";
 
@@ -151,6 +151,89 @@ export function ScheduleBoard({
     (a) => a.quotaStatus === "rejected",
   ).length;
 
+  const toolItems = (
+    <>
+      <MenuItem
+        icon={<Copy className="h-4 w-4" />}
+        onClick={() => runBulk(() => copyPreviousWeekAction(view.team.id, view.weekStart))}
+        hint="ממלא ימים ריקים לפי השבוע הקודם"
+      >
+        העתקה משבוע קודם
+      </MenuItem>
+      <MenuItem
+        icon={<Wand2 className="h-4 w-4" />}
+        onClick={() => runBulk(() => fillDefaultsAction(view.team.id, view.weekStart))}
+        hint="לפי המשמרת, המיקום וימי העבודה הקבועים של כל נציג"
+      >
+        מילוי לפי ברירת מחדל
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem
+        icon={<Eraser className="h-4 w-4" />}
+        tone="danger"
+        disabled={Object.keys(view.assignments).length === 0}
+        onClick={() => setConfirmClear(true)}
+        hint="מחיקת כל השיבוצים של השבוע"
+      >
+        ניקוי השבוע
+      </MenuItem>
+    </>
+  );
+  const exportItems = (
+    <>
+      <MenuLabel>צוות {view.team.name}</MenuLabel>
+      <MenuItem
+        icon={<FileDown className="h-4 w-4" />}
+        href={`/print/schedule?team=${view.team.id}&week=${view.weekStart}`}
+        newTab
+        hint="להדפסה או לשמירה כקובץ"
+      >
+        PDF
+      </MenuItem>
+      <MenuItem
+        icon={<FileSpreadsheet className="h-4 w-4" />}
+        href={`/schedule/export?team=${view.team.id}&week=${view.weekStart}`}
+        hint="קובץ לעריכה ולסינון"
+      >
+        Excel
+      </MenuItem>
+      {teams.length > 1 ? (
+        <>
+          <MenuSeparator />
+          <MenuLabel>כל הצוותים</MenuLabel>
+          <MenuItem
+            icon={<FileDown className="h-4 w-4" />}
+            href={`/print/schedule?team=all&week=${view.weekStart}`}
+            newTab
+            hint="עמוד לכל צוות"
+          >
+            PDF
+          </MenuItem>
+          <MenuItem
+            icon={<FileSpreadsheet className="h-4 w-4" />}
+            href={`/schedule/export?team=all&week=${view.weekStart}`}
+            hint="גיליון לכל צוות"
+          >
+            Excel
+          </MenuItem>
+        </>
+      ) : null}
+      {view.canPublish ? (
+        <>
+          <MenuSeparator />
+          <MenuItem
+            icon={<Share2 className="h-4 w-4" />}
+            onClick={() => setSharing(true)}
+            hint="קישור לצפייה בלבד, גם לוואטסאפ"
+          >
+            שיתוף עם הנציגים
+          </MenuItem>
+        </>
+      ) : null}
+    </>
+  );
+  const selectToggle = () => (selecting ? endSelection() : setSelecting(true));
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -211,10 +294,10 @@ export function ScheduleBoard({
         <div className="inline-flex rounded-lg border border-border bg-muted p-0.5">
           {(
             [
-              ["agents", "לפי נציגים"],
-              ["coverage", "כיסוי משמרות"],
+              ["agents", "לפי נציגים", "נציגים"],
+              ["coverage", "כיסוי משמרות", "כיסוי"],
             ] as const
-          ).map(([m, label]) => (
+          ).map(([m, label, short]) => (
             <button
               key={m}
               type="button"
@@ -224,49 +307,55 @@ export function ScheduleBoard({
                 mode === m ? "bg-surface shadow-sm" : "text-fg-muted",
               )}
             >
-              {label}
+              <span className="hidden sm:inline">{label}</span>
+              <span className="sm:hidden">{short}</span>
             </button>
           ))}
         </div>
 
+        <Menu
+          label="פעולות"
+          icon={<Wand2 className="h-4 w-4" />}
+          align="start"
+          className="md:hidden"
+          disabled={bulk.pending}
+        >
+          {editable ? (
+            <>
+              <MenuLabel>שיבוץ</MenuLabel>
+              {toolItems}
+              {mode === "agents" ? (
+                <MenuItem
+                  icon={<CheckSquare className="h-4 w-4" />}
+                  onClick={selectToggle}
+                  hint="בחירת כמה נציגים או ימים ושיבוץ של כולם יחד"
+                >
+                  {selecting ? "סיום בחירה" : "בחירה מרובה"}
+                </MenuItem>
+              ) : null}
+              <MenuSeparator />
+            </>
+          ) : null}
+          {exportItems}
+        </Menu>
+
         {editable ? (
           <>
             <Menu
+              className="hidden md:block"
               label="כלי שיבוץ"
               icon={<Wand2 className="h-4 w-4" />}
               align="start"
               disabled={bulk.pending}
             >
-              <MenuItem
-                icon={<Copy className="h-4 w-4" />}
-                onClick={() => runBulk(() => copyPreviousWeekAction(view.team.id, view.weekStart))}
-                hint="ממלא ימים ריקים לפי השבוע הקודם"
-              >
-                העתקה משבוע קודם
-              </MenuItem>
-              <MenuItem
-                icon={<Wand2 className="h-4 w-4" />}
-                onClick={() => runBulk(() => fillDefaultsAction(view.team.id, view.weekStart))}
-                hint="לפי המשמרת, המיקום וימי העבודה הקבועים של כל נציג"
-              >
-                מילוי לפי ברירת מחדל
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem
-                icon={<Eraser className="h-4 w-4" />}
-                tone="danger"
-                disabled={Object.keys(view.assignments).length === 0}
-                onClick={() => setConfirmClear(true)}
-                hint="מחיקת כל השיבוצים של השבוע"
-              >
-                ניקוי השבוע
-              </MenuItem>
+              {toolItems}
             </Menu>
             {mode === "agents" ? (
               <Button
                 variant={selecting ? "primary" : "secondary"}
                 size="sm"
-                onClick={() => (selecting ? endSelection() : setSelecting(true))}
+                className={cn(!selecting && "hidden md:inline-flex")}
+                onClick={selectToggle}
                 title="בחירת כמה נציגים או ימים ושיבוץ של כולם יחד"
               >
                 <CheckSquare className="h-4 w-4" />
@@ -277,56 +366,12 @@ export function ScheduleBoard({
         ) : null}
 
         <div className="ms-auto flex flex-wrap items-center gap-2">
-          <Menu label="ייצוא ושיתוף" icon={<Download className="h-4 w-4" />}>
-            <MenuLabel>צוות {view.team.name}</MenuLabel>
-            <MenuItem
-              icon={<FileDown className="h-4 w-4" />}
-              href={`/print/schedule?team=${view.team.id}&week=${view.weekStart}`}
-              newTab
-              hint="להדפסה או לשמירה כקובץ"
-            >
-              PDF
-            </MenuItem>
-            <MenuItem
-              icon={<FileSpreadsheet className="h-4 w-4" />}
-              href={`/schedule/export?team=${view.team.id}&week=${view.weekStart}`}
-              hint="קובץ לעריכה ולסינון"
-            >
-              Excel
-            </MenuItem>
-            {teams.length > 1 ? (
-              <>
-                <MenuSeparator />
-                <MenuLabel>כל הצוותים</MenuLabel>
-                <MenuItem
-                  icon={<FileDown className="h-4 w-4" />}
-                  href={`/print/schedule?team=all&week=${view.weekStart}`}
-                  newTab
-                  hint="עמוד לכל צוות"
-                >
-                  PDF
-                </MenuItem>
-                <MenuItem
-                  icon={<FileSpreadsheet className="h-4 w-4" />}
-                  href={`/schedule/export?team=all&week=${view.weekStart}`}
-                  hint="גיליון לכל צוות"
-                >
-                  Excel
-                </MenuItem>
-              </>
-            ) : null}
-            {view.canPublish ? (
-              <>
-                <MenuSeparator />
-                <MenuItem
-                  icon={<Share2 className="h-4 w-4" />}
-                  onClick={() => setSharing(true)}
-                  hint="קישור לצפייה בלבד, גם לוואטסאפ"
-                >
-                  שיתוף עם הנציגים
-                </MenuItem>
-              </>
-            ) : null}
+          <Menu
+            className="hidden md:block"
+            label="ייצוא ושיתוף"
+            icon={<Download className="h-4 w-4" />}
+          >
+            {exportItems}
           </Menu>
           {view.canPublish && (!view.isPast || view.canEditLocked) ? (
             view.week.status === "draft" ? (
@@ -339,7 +384,8 @@ export function ScheduleBoard({
                 }
               >
                 <Send className="h-4 w-4" />
-                פרסום הסידור
+                <span className="hidden sm:inline">פרסום הסידור</span>
+                <span className="sm:hidden">פרסום</span>
               </Button>
             ) : (
               <Button
@@ -351,7 +397,8 @@ export function ScheduleBoard({
                 }
               >
                 <Undo2 className="h-4 w-4" />
-                החזרה לטיוטה
+                <span className="hidden sm:inline">החזרה לטיוטה</span>
+                <span className="sm:hidden">לטיוטה</span>
               </Button>
             )
           ) : null}
@@ -645,11 +692,7 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell, selecti
                           .join(" · ")}
                       </p>
                     </div>
-                    <div className="flex flex-col items-end gap-0.5">
-                      {(view.quotaUsage[agent.id] ?? []).map((u, _, all) => (
-                        <QuotaBadge key={u.key} showLabel={all.length > 1} usage={u} />
-                      ))}
-                    </div>
+                    <QuotaSummaryBadge usages={view.quotaUsage[agent.id]} />
                   </div>
                 </th>
                 {view.days.map((date) => {
@@ -762,7 +805,7 @@ function DayList({ view, catalog, editable, entryOf, usageOf, onCell, selection 
   const c = coverageFor(view, catalog, day);
   return (
     <div className="space-y-3 md:hidden">
-      <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
+      <div className="sticky top-13 z-20 -mx-4 flex gap-1.5 overflow-x-auto bg-bg/95 px-4 py-2 backdrop-blur">
         {view.days.map((d) => (
           <button
             key={d}

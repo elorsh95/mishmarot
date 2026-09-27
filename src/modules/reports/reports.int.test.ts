@@ -9,6 +9,11 @@ import { scheduleReport } from "./service";
 import { homeDays } from "./types";
 
 let base: Awaited<ReturnType<typeof baseData>>;
+/** A 1×1 transparent PNG. */
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "base64",
+);
 const march = presetRange("month", "2030-03-01");
 
 beforeEach(async () => {
@@ -71,14 +76,15 @@ describe("schedule report", () => {
   it("exports the report to Excel with a totals row", async () => {
     const report = await scheduleReport(actors.admin(), march, "renault");
     const ws = (await readBook(await reportXlsx(report, "agents"))).worksheets[0];
-    const headers = (ws.getRow(1).values as string[]).slice(1);
+    expect(String(ws.getRow(1).getCell(1).value)).toContain("דוח נציגים - רנו");
+    const headers = (ws.getRow(2).values as string[]).slice(1);
     expect(headers.slice(0, 4)).toEqual(["נציג", "מספר עובד", "צוות", "ימי עבודה"]);
     expect(headers).toContain("ימי בית");
     expect(headers).toContain(base.vacation.name);
-    expect(ws.getRow(2).getCell(1).value).toBe("דנה לוי");
-    expect(ws.getRow(2).getCell(4).value).toBe(4);
-    expect(ws.getRow(4).getCell(1).value).toBe("סה״כ");
-    expect(ws.getRow(4).getCell(4).value).toMatchObject({ formula: "SUM(D2:D3)" });
+    expect(ws.getRow(3).getCell(1).value).toBe("דנה לוי");
+    expect(ws.getRow(3).getCell(4).value).toBe(4);
+    expect(ws.getRow(5).getCell(1).value).toBe("סה״כ");
+    expect(ws.getRow(5).getCell(4).value).toMatchObject({ formula: "SUM(D3:D4)" });
   });
 
   it("limits the report to any date range", async () => {
@@ -107,12 +113,13 @@ describe("schedule report", () => {
       agents: 1,
     });
 
-    const wb = await readBook(await reportXlsx(report, "shifts"));
+    const wb = await readBook(await reportXlsx(report, "shifts", TINY_PNG));
     expect(wb.worksheets).toHaveLength(2);
     const ws = wb.worksheets[0];
-    const headers = (ws.getRow(1).values as string[]).slice(1);
+    expect(ws.getImages()).toHaveLength(1);
+    const headers = (ws.getRow(2).values as string[]).slice(1);
     expect(headers.slice(0, 5)).toEqual(["משמרת", "שיבוצים", "נציגים", "ימים", "ממוצע ליום"]);
-    const row = report.shiftRows.findIndex((r) => r.shiftId === base.morning.id) + 2;
+    const row = report.shiftRows.findIndex((r) => r.shiftId === base.morning.id) + 3;
     expect(ws.getRow(row).getCell(2).value).toBe(4);
   });
 });

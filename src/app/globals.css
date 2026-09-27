@@ -19,8 +19,48 @@
   --color-danger: #e03131;
 }
 
+/*
+ * Dark mode: follows the device unless the user picked a theme (data-theme on <html>, set from
+ * the "theme" cookie by the root layout and by the theme switch in the menu).
+ */
 :root {
   color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg: #0f131a;
+    --color-surface: #171c25;
+    --color-muted: #212734;
+    --color-border: #2e3545;
+    --color-fg: #e6e9ef;
+    --color-fg-muted: #a3abba;
+    --color-fg-subtle: #737c8c;
+    --color-primary: #5c7cfa;
+    --color-primary-hover: #748ffc;
+    --color-success: #40c057;
+    --color-warning: #fab005;
+    --color-warning-fg: #ffd43b;
+    --color-danger: #fa5252;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #0f131a;
+  --color-surface: #171c25;
+  --color-muted: #212734;
+  --color-border: #2e3545;
+  --color-fg: #e6e9ef;
+  --color-fg-muted: #a3abba;
+  --color-fg-subtle: #737c8c;
+  --color-primary: #5c7cfa;
+  --color-primary-hover: #748ffc;
+  --color-success: #40c057;
+  --color-warning: #fab005;
+  --color-warning-fg: #ffd43b;
+  --color-danger: #fa5252;
 }
 
 body {

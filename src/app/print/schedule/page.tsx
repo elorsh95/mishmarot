@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { isIsoDate, todayIso, weekStartOf, formatDateTime } from "@/lib/dates";
 import { getSessionUser, requireSessionUser } from "@/modules/auth/session";
+import { getBranding } from "@/modules/branding/service";
+import { logoUrl } from "@/modules/branding/types";
 import { getCatalog } from "@/modules/catalog/service";
 import { getWeekView } from "@/modules/schedule/service";
 import { teamsForActor } from "@/modules/teams/service";
@@ -37,8 +39,9 @@ export default async function PrintSchedulePage({ searchParams }: PageProps<"/pr
   const weekParam = typeof params.week === "string" && isIsoDate(params.week) ? params.week : null;
   const weekStart = weekStartOf(weekParam ?? todayIso());
 
-  const [catalog, views] = await Promise.all([
+  const [catalog, branding, views] = await Promise.all([
     getCatalog(),
+    getBranding(),
     Promise.all(selected.map((t) => getWeekView(user, t.id, weekStart))),
   ]);
   const printedAt = formatDateTime(new Date().toISOString());
@@ -54,6 +57,7 @@ export default async function PrintSchedulePage({ searchParams }: PageProps<"/pr
             catalog={catalog}
             printedAt={printedAt}
             printedBy={user.fullName}
+            logoUrl={logoUrl(branding)}
           />
         ))}
       </div>
