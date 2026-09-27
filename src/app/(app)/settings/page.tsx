@@ -7,11 +7,16 @@ import { requireSessionUser } from "@/modules/auth/session";
 import { getBranding } from "@/modules/branding/service";
 import { logoUrl } from "@/modules/branding/types";
 import { listCalendar } from "@/modules/calendar/service";
-import { getCatalog } from "@/modules/catalog/service";
+import { getCatalog, listAttendanceStatuses } from "@/modules/catalog/service";
 import { addDays, todayIso } from "@/lib/dates";
 import { can } from "@/modules/permissions/check";
 import { getSettings } from "@/modules/settings/service";
-import { AbsenceTypesCard, LocationsCard, ShiftsCard } from "./catalog-lists";
+import {
+  AbsenceTypesCard,
+  AttendanceStatusesCard,
+  LocationsCard,
+  ShiftsCard,
+} from "./catalog-lists";
 import { BrandingCard } from "./branding-card";
 import { GeneralSettingsCard } from "./general-settings";
 import { HolidaysCard } from "./holidays-card";
@@ -24,6 +29,7 @@ const TABS = [
   { key: "shifts", label: "משמרות", needs: "catalog.manage" },
   { key: "locations", label: "מיקומי עבודה", needs: "catalog.manage" },
   { key: "absences", label: "סוגי היעדרות", needs: "catalog.manage" },
+  { key: "attendance", label: "סטטוסי נוכחות", needs: "catalog.manage" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -48,6 +54,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   } else if (tab === "holidays") {
     const today = todayIso();
     content = <HolidaysCard rows={await listCalendar(addDays(today, -7), addDays(today, 365))} />;
+  } else if (tab === "attendance") {
+    content = <AttendanceStatusesCard statuses={await listAttendanceStatuses()} />;
   } else {
     const catalog = await getCatalog();
     content =

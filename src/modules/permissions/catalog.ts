@@ -52,6 +52,14 @@ export const PERMISSIONS = {
     scoped: true,
   },
 
+  // נוכחות
+  "attendance.view": { label: "צפייה בנוכחות", group: "נוכחות", scoped: true },
+  "attendance.manage": {
+    label: "סימון נוכחות, איחורים ומיקום בפועל",
+    group: "נוכחות",
+    scoped: true,
+  },
+
   // אישורים
   "approvals.view": { label: "צפייה בבקשות לאישור", group: "אישורים", scoped: true },
   "approvals.decide": { label: "אישור ודחייה של חריגים", group: "אישורים", scoped: true },
@@ -63,6 +71,12 @@ export const PERMISSION_KEYS = Object.keys(PERMISSIONS) as PermissionKey[];
 
 export type RolePermissions = Partial<Record<PermissionKey, PermissionScope>>;
 
+/**
+ * Permissions added after the first release. A system role created before a key existed gets
+ * that key's default grant once (see ensureDefaultRoles); after that the admin's edits stand.
+ */
+export const LATER_PERMISSION_KEYS: PermissionKey[] = ["attendance.view", "attendance.manage"];
+
 export const SCOPE_LABELS: Record<PermissionScope, string> = {
   all: "כל הצוותים",
   own_teams: "הצוותים שלו בלבד",
@@ -72,6 +86,7 @@ export const SYSTEM_ROLE_IDS = {
   admin: "admin",
   centerManager: "center_manager",
   teamManager: "team_manager",
+  shiftLead: "shift_lead",
 } as const;
 
 const ALL = "all" as const;
@@ -109,6 +124,8 @@ export const DEFAULT_ROLES: Array<{
       "schedule.editLocked": ALL,
       "approvals.view": ALL,
       "approvals.decide": ALL,
+      "attendance.view": ALL,
+      "attendance.manage": ALL,
     },
   },
   {
@@ -125,6 +142,22 @@ export const DEFAULT_ROLES: Array<{
       "schedule.edit": OWN,
       "schedule.publish": OWN,
       "approvals.view": OWN,
+      "attendance.view": OWN,
+    },
+  },
+  {
+    id: SYSTEM_ROLE_IDS.shiftLead,
+    name: "אחמ״ש",
+    description: "אחראי/ת משמרת: צפייה בכל הצוותים, נוכחות, אישור חריגים והעברות",
+    permissions: {
+      "agents.view": ALL,
+      "schedule.view": ALL,
+      "attendance.view": ALL,
+      "attendance.manage": ALL,
+      "approvals.view": ALL,
+      "approvals.decide": ALL,
+      "transfers.request": ALL,
+      "transfers.decide": ALL,
     },
   },
 ];

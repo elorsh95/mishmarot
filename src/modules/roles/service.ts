@@ -5,6 +5,7 @@ import { DomainError, NotFoundError } from "@/lib/errors";
 import { auditInTx } from "@/modules/audit/service";
 import {
   DEFAULT_ROLES,
+  LATER_PERMISSION_KEYS,
   PERMISSIONS,
   PERMISSION_KEYS,
   SYSTEM_ROLE_IDS,
@@ -130,7 +131,8 @@ export async function deleteRole(actor: Actor, roleId: string) {
 
 /**
  * Creates the default roles if missing. Existing roles are left as edited by the admin,
- * except the admin role, which always receives every permission (so it can never lock itself out).
+ * except the admin role, which always receives every permission (so it can never lock itself out),
+ * and permissions added in a later release, which a system role receives once by default.
  */
 export async function ensureDefaultRoles() {
   for (const def of DEFAULT_ROLES) {
@@ -142,11 +144,28 @@ export async function ensureDefaultRoles() {
         description: def.description,
         isSystem: true,
         permissions: def.permissions,
+        seededKeys: PERMISSION_KEYS,
         createdAt: serverNow(),
         updatedAt: serverNow(),
       });
     } else if (def.id === SYSTEM_ROLE_IDS.admin) {
-      await ref.update({ permissions: def.permissions, isSystem: true });
+      await ref.update({
+        permissions: def.permissions,
+        isSystem: true,
+        seededKeys: PERMISSION_KEYS,
+      });
+    } else {
+      // Roles seeded before `seededKeys` existed knew every key except the later ones.
+      const seeded: string[] =
+        snap.get("seededKeys") ?? PERMISSION_KEYS.filter((k) => !LATER_PERMISSION_KEYS.includes(k));
+      const added = PERMISSION_KEYS.filter((k) => !seeded.includes(k));
+      if (added.length === 0) continue;
+      const permissions: RolePermissions = { ...(snap.get("permissions") ?? {}) };
+      for (const key of added) {
+        const scope = def.permissions[key];
+        if (scope && !permissions[key]) permissions[key] = scope;
+      }
+      await ref.update({ permissions, seededKeys: PERMISSION_KEYS });
     }
   }
 }

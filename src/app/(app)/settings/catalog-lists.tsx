@@ -1,18 +1,23 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Home, Pencil, Plus } from "lucide-react";
+import { Clock, Home, Pencil, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
-import { Checkbox, Field, FormError, Input } from "@/components/ui/form";
+import { Checkbox, Field, FormError, Input, Select } from "@/components/ui/form";
 import { EmptyState } from "@/components/ui/page-header";
 import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
 import { WEEKDAY_NAMES, WEEKDAY_SHORT } from "@/lib/dates";
-import type { AbsenceType, Shift, WorkLocation } from "@/modules/catalog/service";
-import { saveAbsenceTypeAction, saveLocationAction, saveShiftAction } from "./actions";
+import type { AbsenceType, AttendanceStatus, Shift, WorkLocation } from "@/modules/catalog/service";
+import {
+  saveAbsenceTypeAction,
+  saveAttendanceStatusAction,
+  saveLocationAction,
+  saveShiftAction,
+} from "./actions";
 
 type Editing<T> = T | "new" | null;
 
@@ -70,6 +75,14 @@ export function ShiftsCard({ shifts }: { shifts: Shift[] }) {
           </span>
           {s.coversMorning ? <Badge>בוקר</Badge> : null}
           {s.coversEvening ? <Badge>ערב</Badge> : null}
+          {s.startTime && s.endTime ? (
+            <Badge>
+              <Clock className="h-3 w-3" />
+              <span className="tabular-nums" dir="ltr">
+                {s.startTime}–{s.endTime}
+              </span>
+            </Badge>
+          ) : null}
           {s.requiredAgents != null ? <Badge>נדרשים: {s.requiredAgents}</Badge> : null}
         </>
       )}
@@ -128,6 +141,46 @@ export function AbsenceTypesCard({ absenceTypes }: { absenceTypes: AbsenceType[]
         <AbsenceTypeDialog
           absenceType={editing === "new" ? null : editing}
           list={absenceTypes}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
+    </ListCard>
+  );
+}
+
+const TIME_FIELD_LABELS: Record<AttendanceStatus["timeField"], string> = {
+  none: "ללא שעה",
+  arrival: "שעת הגעה (איחור)",
+  departure: "שעת יציאה (יציאה מוקדמת)",
+};
+
+export function AttendanceStatusesCard({ statuses }: { statuses: AttendanceStatus[] }) {
+  const [editing, setEditing] = useState<Editing<AttendanceStatus>>(null);
+  return (
+    <ListCard
+      title="סטטוסי נוכחות"
+      description="מה אחמ״ש יכול/ה לסמן לכל נציג במסך הנוכחות. אפשר להוסיף סטטוסים לפי הצורך"
+      onAdd={() => setEditing("new")}
+      items={statuses}
+      onEdit={setEditing}
+      details={(s) => (
+        <>
+          <Badge tone={s.presence === "present" ? "success" : "danger"}>
+            {s.presence === "present" ? "נוכח/ת" : "לא נוכח/ת"}
+          </Badge>
+          {s.timeField !== "none" ? (
+            <Badge>
+              <Clock className="h-3 w-3" />
+              {TIME_FIELD_LABELS[s.timeField]}
+            </Badge>
+          ) : null}
+        </>
+      )}
+    >
+      {editing ? (
+        <AttendanceStatusDialog
+          status={editing === "new" ? null : editing}
+          list={statuses}
           onClose={() => setEditing(null)}
         />
       ) : null}
@@ -322,6 +375,8 @@ function ShiftDialog({
   );
   const [coversMorning, setCoversMorning] = useState(shift?.coversMorning ?? true);
   const [coversEvening, setCoversEvening] = useState(shift?.coversEvening ?? false);
+  const [startTime, setStartTime] = useState(shift?.startTime ?? "");
+  const [endTime, setEndTime] = useState(shift?.endTime ?? "");
   const { run, pending, error, fieldErrors } = useAction();
 
   function toggleDay(day: number) {
@@ -337,6 +392,8 @@ function ShiftDialog({
           requiredAgents: required === "" ? null : Number(required),
           coversMorning,
           coversEvening,
+          startTime: startTime || null,
+          endTime: endTime || null,
         }),
       { onSuccess: onClose },
     );
@@ -386,6 +443,29 @@ function ShiftDialog({
             label="ערב"
             checked={coversEvening}
             onChange={(e) => setCoversEvening(e.target.checked)}
+          />
+        </div>
+      </Field>
+      <Field
+        label="שעות"
+        error={fieldErrors.startTime ?? fieldErrors.endTime}
+        hint="אופציונלי. במסך הנוכחות: לחישוב דקות איחור, ולבחירת המשמרת שפעילה עכשיו"
+      >
+        <div className="flex items-center gap-2">
+          <Input
+            type="time"
+            aria-label="שעת התחלה"
+            value={startTime}
+            onChange={(e) => setStartTime(e.target.value)}
+            className="max-w-32"
+          />
+          <span className="text-fg-muted">עד</span>
+          <Input
+            type="time"
+            aria-label="שעת סיום"
+            value={endTime}
+            onChange={(e) => setEndTime(e.target.value)}
+            className="max-w-32"
           />
         </div>
       </Field>
@@ -481,6 +561,83 @@ function AbsenceTypeDialog({
       onClose={onClose}
     >
       <NameAndColor values={base} onChange={setBase} errors={fieldErrors} />
+      <OrderAndActive values={base} onChange={setBase} errors={fieldErrors} />
+    </ItemDialog>
+  );
+}
+
+function AttendanceStatusDialog({
+  status,
+  list,
+  onClose,
+}: {
+  status: AttendanceStatus | null;
+  list: AttendanceStatus[];
+  onClose: () => void;
+}) {
+  const [base, setBase] = useBase(status, list, "#2563eb");
+  const [presence, setPresence] = useState<AttendanceStatus["presence"]>(
+    status?.presence ?? "present",
+  );
+  const [timeField, setTimeField] = useState<AttendanceStatus["timeField"]>(
+    status?.timeField ?? "none",
+  );
+  const { run, pending, error, fieldErrors } = useAction();
+
+  function save() {
+    run(
+      () =>
+        saveAttendanceStatusAction(status?.id ?? null, {
+          ...basePayload(base),
+          presence,
+          timeField,
+        }),
+      { onSuccess: onClose },
+    );
+  }
+
+  return (
+    <ItemDialog
+      title={status ? `עריכת סטטוס: ${status.name}` : "סטטוס נוכחות חדש"}
+      pending={pending}
+      error={error}
+      onSave={save}
+      onClose={onClose}
+    >
+      <NameAndColor values={base} onChange={setBase} errors={fieldErrors} />
+      <Field
+        label="נוכחות"
+        hint="נוכח/ת: נספר/ת כעובד/ת במשמרת, ואפשר לבחור מאיפה. לא נוכח/ת: נספר/ת כחסר/ה"
+      >
+        <div className="flex flex-wrap gap-4">
+          {(["present", "absent"] as const).map((p) => (
+            <label key={p} className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="presence"
+                checked={presence === p}
+                onChange={() => setPresence(p)}
+                className="h-4 w-4 accent-primary"
+              />
+              {p === "present" ? "נוכח/ת" : "לא נוכח/ת"}
+            </label>
+          ))}
+        </div>
+      </Field>
+      <Field label="שעה" htmlFor="status-time" hint="שעה שמזינים עם הסטטוס, לחישוב דקות האיחור">
+        <Select
+          id="status-time"
+          value={timeField}
+          onChange={(e) => setTimeField(e.target.value as AttendanceStatus["timeField"])}
+          className="max-w-64"
+        >
+          {Object.entries(TIME_FIELD_LABELS).map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
+            </option>
+          ))}
+        </Select>
+      </Field>
       <OrderAndActive values={base} onChange={setBase} errors={fieldErrors} />
     </ItemDialog>
   );
