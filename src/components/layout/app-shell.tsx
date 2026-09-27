@@ -8,6 +8,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   History,
+  FileSpreadsheet,
   Home,
   KeyRound,
   LogOut,
@@ -33,6 +34,7 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   users: UserCog,
   roles: ShieldCheck,
   settings: Settings,
+  reports: FileSpreadsheet,
   audit: History,
 };
 
