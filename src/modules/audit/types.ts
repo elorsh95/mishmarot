@@ -12,6 +12,7 @@ export type AuditEntityType =
   | "settings"
   | "transfer"
   | "calendar"
+  | "shareLink"
   | "auth";
 
 export interface AuditEntry {
@@ -44,5 +45,6 @@ export const AUDIT_ENTITY_LABELS: Record<AuditEntityType, string> = {
   settings: "הגדרות",
   transfer: "העברת נציג",
   calendar: "לוח חגים",
+  shareLink: "קישור שיתוף",
   auth: "התחברות",
 };

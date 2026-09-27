@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/action"];
+/** Read-only schedule links shared with agents (see modules/sharing). */
+const PUBLIC_PREFIXES = ["/s/"];
 
 /**
  * Optimistic check only: redirects to /login when there is no session cookie.
@@ -8,7 +10,9 @@ const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/action"];
  */
 export function proxy(request: NextRequest) {
   const hasSession = request.cookies.has("__session");
-  const isPublic = PUBLIC_PATHS.includes(request.nextUrl.pathname);
+  const { pathname } = request.nextUrl;
+  const isPublic =
+    PUBLIC_PATHS.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
   if (!hasSession && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
   }

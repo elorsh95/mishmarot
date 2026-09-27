@@ -3,7 +3,7 @@
 import { runAction } from "@/lib/action";
 import { DomainError } from "@/lib/errors";
 import { importAgents } from "@/modules/agents/import";
-import { createAgent, updateAgent, type AgentInput } from "@/modules/agents/service";
+import { createAgent, deleteAgent, updateAgent, type AgentInput } from "@/modules/agents/service";
 
 const REVALIDATE = ["/agents", "/schedule", "/approvals"];
 
@@ -40,4 +40,11 @@ export async function importAgentsAction(formData: FormData) {
     },
     { revalidate: dryRun ? [] : REVALIDATE },
   );
+}
+
+export async function deleteAgentAction(agentId: string) {
+  return runAction((actor) => deleteAgent(actor, agentId), {
+    revalidate: REVALIDATE,
+    message: "הנציג נמחק",
+  });
 }
