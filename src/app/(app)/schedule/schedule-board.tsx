@@ -17,6 +17,7 @@ import {
   Plus,
   Send,
   Share2,
+  Sparkles,
   Undo2,
   Wand2,
   X,
@@ -57,6 +58,7 @@ import {
 import { BulkEditor } from "./bulk-editor";
 import { CellEditor, QuotaBadge, QuotaSummaryBadge, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
+import { ProposeDialog } from "./propose-dialog";
 import { ShareDialog } from "./share-dialog";
 import { TemplatesDialog } from "./templates-dialog";
 
@@ -92,6 +94,7 @@ export function ScheduleBoard({
   const [bulkEditing, setBulkEditing] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [templates, setTemplates] = useState(false);
+  const [proposing, setProposing] = useState(false);
   const bulk = useAction();
   const toast = useToast();
 
@@ -354,6 +357,13 @@ export function ScheduleBoard({
           {editable ? (
             <>
               <MenuLabel>שיבוץ</MenuLabel>
+              <MenuItem
+                icon={<Sparkles className="h-4 w-4" />}
+                onClick={() => setProposing(true)}
+                hint="ממלא את השבוע לפי ימי העבודה, המינימום, המכסה והוגנות"
+              >
+                הצע סידור
+              </MenuItem>
               {toolItems}
               {mode === "agents" ? (
                 <MenuItem
@@ -372,6 +382,16 @@ export function ScheduleBoard({
 
         {editable ? (
           <>
+            <Button
+              size="sm"
+              className="hidden md:inline-flex"
+              disabled={bulk.pending}
+              onClick={() => setProposing(true)}
+              title="ממלא את השבוע לפי ימי העבודה, המינימום, המכסה והוגנות"
+            >
+              <Sparkles className="h-4 w-4" />
+              הצע סידור
+            </Button>
             <Menu
               className="hidden md:block"
               label="כלי שיבוץ"
@@ -534,6 +554,19 @@ export function ScheduleBoard({
             ניקוי בחירה
           </Button>
         </div>
+      ) : null}
+
+      {proposing ? (
+        <ProposeDialog
+          teamId={view.team.id}
+          weekStart={view.weekStart}
+          weekLabel={view.label}
+          hasMinimum={view.team.minMorning > 0 || view.team.minEvening > 0}
+          catalog={catalog}
+          agentNames={Object.fromEntries(view.agents.map((a) => [a.id, agentName(a)]))}
+          onApplied={showResult}
+          onClose={() => setProposing(false)}
+        />
       ) : null}
 
       {templates ? (

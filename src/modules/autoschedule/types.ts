@@ -1,22 +1,11 @@
 import type { IsoDate } from "@/lib/dates";
 
-/**
- * A rule for one agent in an auto-schedule run, from the manager's free-text instructions
- * (parsed by Claude, see ai.ts) or set directly. `dates` empty = the whole week.
- */
-export type ScheduleConstraint =
-  | { kind: "off"; agentId: string; dates: IsoDate[] }
-  | { kind: "work"; agentId: string; dates: IsoDate[] }
-  | { kind: "avoid_shift"; agentId: string; shiftId: string; dates: IsoDate[] }
-  | { kind: "only_shift"; agentId: string; shiftId: string; dates: IsoDate[] }
-  | { kind: "no_home"; agentId: string; dates: IsoDate[] };
-
+/** Why the proposal put an agent where it did (shown next to each entry). */
 export type ProposalReason =
   | "default"
   | "moved_to_evening"
   | "moved_to_morning"
   | "office_instead_of_home"
-  | "extra_day"
   | "no_default_shift";
 
 export const REASON_LABELS: Record<ProposalReason, string> = {
@@ -24,7 +13,6 @@ export const REASON_LABELS: Record<ProposalReason, string> = {
   moved_to_evening: "הועבר לערב כדי להשלים את המינימום",
   moved_to_morning: "הועבר לבוקר כדי להשלים את המינימום",
   office_instead_of_home: "במוקד במקום בבית: המכסה נוצלה",
-  extra_day: "יום נוסף לפי ההנחיות",
   no_default_shift: "משמרת נבחרה לפי הצורך (אין ברירת מחדל)",
 };
 
@@ -65,10 +53,6 @@ export interface Proposal {
   coverage: DayCoverage[];
   fairness: FairnessRow[];
   warnings: string[];
-  /** Constraints applied, with the instruction text they came from (for display). */
-  constraints: ScheduleConstraint[];
-  /** Whether Claude read free-text instructions for this proposal. */
-  usedAi: boolean;
   /** Weeks of history used for fairness. */
   historyWeeks: number;
 }
@@ -77,3 +61,6 @@ export interface AutoScheduleOptions {
   /** On Fridays and holiday eves, schedule only as many as the minimum needs, rotating fairly. */
   fridayRotation: boolean;
 }
+
+/** Weeks back the fairness counts look at. */
+export const FAIRNESS_WEEKS = 8;

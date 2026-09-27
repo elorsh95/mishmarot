@@ -18,7 +18,6 @@
     "test:integration": "firebase emulators:exec --project demo-mishmarot --only auth,firestore \"vitest run --config vitest.integration.config.mts\""
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.128.0",
     "@hebcal/core": "^5.10.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",

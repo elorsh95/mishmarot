@@ -13,6 +13,7 @@ import {
   setWeekStatus,
 } from "@/modules/schedule/service";
 import type { ApplyResult } from "@/modules/schedule/engine";
+import { applyProposal, proposeWeek } from "@/modules/autoschedule/service";
 import { cellHistory } from "@/modules/schedule/history";
 import { saveUndo, undoBatch } from "@/modules/schedule/undo";
 import {
@@ -253,4 +254,36 @@ export async function cellHistoryAction(agentId: string, day: string) {
   return runAction((actor) => cellHistory(actor, idSchema.parse(agentId), date.parse(day)), {
     revalidate: [],
   });
+}
+
+export async function proposeWeekAction(teamId: string, weekStart: string, options: unknown) {
+  const parsed = z.object({ fridayRotation: z.boolean().default(false) }).parse(options ?? {});
+  return runAction(
+    (actor) => proposeWeek(actor, idSchema.parse(teamId), date.parse(weekStart), parsed),
+    {
+      revalidate: [],
+    },
+  );
+}
+
+export async function applyProposalAction(teamId: string, weekStart: string, entries: unknown) {
+  return runAction(
+    async (actor) => {
+      const result = await applyProposal(
+        actor,
+        idSchema.parse(teamId),
+        date.parse(weekStart),
+        entries as never,
+      );
+      return {
+        summary:
+          result.changed === 0 && result.skipped.length === 0
+            ? "אין מה להוסיף: המשבצות כבר מלאות"
+            : summarize(result, "שובצו"),
+        skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
+      };
+    },
+    { revalidate: REVALIDATE },
+  );
 }
