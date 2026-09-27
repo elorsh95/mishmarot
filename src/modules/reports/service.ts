@@ -1,5 +1,6 @@
 import { col, COLLECTIONS, fromDoc } from "@/lib/firebase/collections";
 import { db } from "@/lib/firebase/admin";
+import { addMonths, monthOf } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
 import { getCatalog } from "@/modules/catalog/service";
 import { teamScope, type Actor } from "@/modules/permissions/check";
@@ -38,21 +39,23 @@ export async function scheduleReport(
   };
   if (selected.length === 0) return empty;
 
+  // Equality filters only (team and month), which Firestore serves without a composite index;
+  // the days outside the range are dropped below. A range spans at most 13 months (`in` takes 30).
+  const months: string[] = [];
+  for (let m = monthOf(range.from); m <= monthOf(range.to); m = addMonths(m, 1)) months.push(m);
   const teamIds = new Set(selected.map((t) => t.id));
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
   const [entrySnaps, agentSnaps] = await Promise.all([
     Promise.all(
       selected.map((t) =>
-        col(COLLECTIONS.assignments)
-          .where("teamId", "==", t.id)
-          .where("date", ">=", range.from)
-          .where("date", "<=", range.to)
-          .get(),
+        col(COLLECTIONS.assignments).where("teamId", "==", t.id).where("month", "in", months).get(),
       ),
     ),
     Promise.all(selected.map((t) => col(COLLECTIONS.agents).where("teamId", "==", t.id).get())),
   ]);
-  const entries = entrySnaps.flatMap((s) => s.docs.map((d) => fromDoc<Assignment>(d)));
+  const entries = entrySnaps
+    .flatMap((s) => s.docs.map((d) => fromDoc<Assignment>(d)))
+    .filter((e) => e.date >= range.from && e.date <= range.to);
   const agents = new Map(
     agentSnaps.flatMap((s) => s.docs.map((d) => fromDoc<Agent>(d))).map((a) => [a.id, a]),
   );

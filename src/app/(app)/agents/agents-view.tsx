@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Checkbox, Field, FormError, Input, Select, Textarea } from "@/components/ui/form";
 import { EmptyState } from "@/components/ui/page-header";
+import { SortTh, useSort, type Sort } from "@/components/ui/sortable";
 import { Table, Td, Th } from "@/components/ui/table";
 import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
@@ -66,6 +67,29 @@ export function AgentsView({
         (!q || agentName(a).includes(q) || a.employeeNumber.includes(q)),
     );
   }, [agents, query, showInactive, teamFilter]);
+
+  const sortValues = useMemo(() => {
+    const team = new Map(teams.map((t) => [t.id, t.name]));
+    const shift = new Map(catalog.shifts.map((x) => [x.id, x.name]));
+    const location = new Map(catalog.locations.map((x) => [x.id, x.name]));
+    return {
+      name: (a: Agent) => agentName(a),
+      employeeNumber: (a: Agent) => a.employeeNumber,
+      team: (a: Agent) => team.get(a.teamId) ?? "",
+      defaults: (a: Agent) =>
+        a.defaultShiftId
+          ? `${shift.get(a.defaultShiftId) ?? ""} ${location.get(a.defaultLocationId ?? "") ?? ""}`
+          : "",
+      quota: (a: Agent) => a.monthlyQuota ?? defaultQuota,
+      status: (a: Agent) => (a.isActive ? "פעיל" : "לא פעיל"),
+    };
+  }, [teams, catalog, defaultQuota]);
+  const { sorted, sort, setSort, toggle } = useSort(visible, sortValues);
+  const th = (key: keyof typeof sortValues, label: string) => (
+    <SortTh sortKey={key} sort={sort} onSort={toggle}>
+      {label}
+    </SortTh>
+  );
 
   return (
     <div className="space-y-4">
@@ -132,17 +156,17 @@ export function AgentsView({
               <Table>
                 <thead>
                   <tr>
-                    <Th>שם</Th>
-                    <Th>מספר עובד</Th>
-                    <Th>צוות</Th>
-                    <Th>ברירת מחדל</Th>
-                    <Th>מכסת בית</Th>
-                    <Th>סטטוס</Th>
+                    {th("name", "שם")}
+                    {th("employeeNumber", "מספר עובד")}
+                    {th("team", "צוות")}
+                    {th("defaults", "ברירת מחדל")}
+                    {th("quota", "מכסת בית")}
+                    {th("status", "סטטוס")}
                     <Th />
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((a) => (
+                  {sorted.map((a) => (
                     <tr key={a.id} className={cn(!a.isActive && "text-fg-muted")}>
                       <Td className="font-medium">{agentName(a)}</Td>
                       <Td>{a.employeeNumber || "—"}</Td>
@@ -181,8 +205,9 @@ export function AgentsView({
                 </tbody>
               </Table>
             </div>
+            <MobileSort sort={sort} onChange={setSort} />
             <ul className="divide-y divide-border md:hidden">
-              {visible.map((a) => (
+              {sorted.map((a) => (
                 <li key={a.id} className="flex items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <p className={cn("font-medium", !a.isActive && "text-fg-muted")}>
@@ -233,6 +258,39 @@ export function AgentsView({
           onClose={() => setEditing(null)}
         />
       ) : null}
+    </div>
+  );
+}
+
+const MOBILE_SORTS: Array<[string, string, Sort]> = [
+  ["", "סדר ברירת מחדל", null],
+  ["name-asc", "שם (א–ת)", { key: "name", dir: "asc" }],
+  ["name-desc", "שם (ת–א)", { key: "name", dir: "desc" }],
+  ["team-asc", "צוות", { key: "team", dir: "asc" }],
+  ["employeeNumber-asc", "מספר עובד", { key: "employeeNumber", dir: "asc" }],
+  ["quota-desc", "מכסת בית (מהגבוהה)", { key: "quota", dir: "desc" }],
+];
+
+/** Phones show a list without column headers, so the sort is picked from a menu. */
+function MobileSort({ sort, onChange }: { sort: Sort; onChange: (sort: Sort) => void }) {
+  const value = sort ? `${sort.key}-${sort.dir}` : "";
+  return (
+    <div className="flex items-center gap-2 border-b border-border px-4 py-2 md:hidden">
+      <label htmlFor="agents-sort" className="text-xs text-fg-muted">
+        מיון
+      </label>
+      <Select
+        id="agents-sort"
+        value={MOBILE_SORTS.some(([v]) => v === value) ? value : ""}
+        onChange={(e) => onChange(MOBILE_SORTS.find(([v]) => v === e.target.value)?.[2] ?? null)}
+        className="h-8 w-auto text-sm"
+      >
+        {MOBILE_SORTS.map(([v, label]) => (
+          <option key={v} value={v}>
+            {label}
+          </option>
+        ))}
+      </Select>
     </div>
   );
 }
