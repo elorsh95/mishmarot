@@ -4,8 +4,10 @@ import { z } from "zod";
 import { runAction } from "@/lib/action";
 import {
   absenceTypeInputSchema,
+  attendanceStatusInputSchema,
   locationInputSchema,
   saveAbsenceType,
+  saveAttendanceStatus,
   saveLocation,
   saveShift,
   shiftInputSchema,
@@ -14,7 +16,7 @@ import { clearSpecialDay, setSpecialDay, specialDaySchema } from "@/modules/cale
 import { removeLogo, setLogo } from "@/modules/branding/service";
 import { settingsSchema, updateSettings } from "@/modules/settings/service";
 
-const REVALIDATE = ["/settings", "/schedule", "/agents", "/approvals", "/"];
+const REVALIDATE = ["/settings", "/schedule", "/agents", "/approvals", "/attendance", "/"];
 const optionalId = z.string().min(1).nullable();
 
 export async function updateSettingsAction(input: unknown) {
@@ -45,6 +47,14 @@ export async function saveAbsenceTypeAction(id: string | null, input: unknown) {
   return runAction(
     (actor) => saveAbsenceType(actor, optionalId.parse(id), absenceTypeInputSchema.parse(input)),
     { revalidate: REVALIDATE, message: "סוג ההיעדרות נשמר" },
+  );
+}
+
+export async function saveAttendanceStatusAction(id: string | null, input: unknown) {
+  return runAction(
+    (actor) =>
+      saveAttendanceStatus(actor, optionalId.parse(id), attendanceStatusInputSchema.parse(input)),
+    { revalidate: REVALIDATE, message: "סטטוס הנוכחות נשמר" },
   );
 }
 

@@ -122,3 +122,30 @@ export function formatDateTime(iso: string): string {
     minute: "2-digit",
   }).format(new Date(iso));
 }
+
+/** A time of day, "HH:MM" (24 hours). */
+export type ClockTime = string;
+
+const CLOCK_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export function isClockTime(value: string): boolean {
+  return CLOCK_RE.test(value);
+}
+
+/** The current time of day in the app's time zone, "HH:MM". */
+export function nowClock(now: Date = new Date()): ClockTime {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: APP_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return `${get("hour")}:${get("minute")}`;
+}
+
+/** Minutes since midnight. */
+export function clockMinutes(time: ClockTime): number {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}

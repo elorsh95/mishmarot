@@ -106,9 +106,26 @@ async function main() {
     roleId: SYSTEM_ROLE_IDS.teamManager,
     managedTeamIds: [teamId("ניסאן"), teamId("דאצ׳יה")],
   });
+  await createUserUnchecked({
+    username: "shira",
+    fullName: "שירה אחמ״שית",
+    password: "Lead1234",
+    roleId: SYSTEM_ROLE_IDS.shiftLead,
+    managedTeamIds: [],
+  });
   console.log("✓ users");
 
   const admin = actorFor(adminId, "מנהל מערכת", SYSTEM_ROLE_IDS.admin, []);
+  // Shift hours, for lateness on the attendance screen
+  const hours: Record<string, [string, string]> = {
+    בוקר: ["08:00", "16:00"],
+    ערב: ["14:00", "22:00"],
+    כפולה: ["08:00", "22:00"],
+  };
+  for (const s of (await getCatalog()).shifts) {
+    const [startTime, endTime] = hours[s.name] ?? [null, null];
+    await col(COLLECTIONS.shifts).doc(s.id).update({ startTime, endTime });
+  }
   const catalog = await getCatalog();
   const shift = (name: string) => catalog.shifts.find((s) => s.name === name)!.id;
   const location = (name: string) => catalog.locations.find((l) => l.name === name)!.id;
@@ -196,6 +213,7 @@ Demo users (username / password):
   center / Center1234   מנהלת מוקד
   yossi  / Team1234     מנהל צוות רנו
   michal / Team1234     מנהלת צוותים ניסאן + דאצ׳יה
+  shira  / Lead1234     אחמ״שית (נוכחות בכל הצוותים)
 `);
 }
 

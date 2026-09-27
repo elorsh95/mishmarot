@@ -7,6 +7,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ClipboardCheck,
+  Clock,
+  UserCheck,
   UserX,
   XCircle,
 } from "lucide-react";
@@ -25,6 +27,8 @@ import {
   weekStartOf,
 } from "@/lib/dates";
 import { agentName } from "@/modules/agents/types";
+import { getAttendanceDay } from "@/modules/attendance/service";
+import { summarizeAttendance, type AttendanceDay } from "@/modules/attendance/types";
 import { countPendingApprovals } from "@/modules/approvals/service";
 import { weekCoverage } from "@/modules/dashboard/service";
 import type { WeekSummary } from "@/modules/dashboard/summary";
@@ -41,7 +45,7 @@ export default async function DashboardPage() {
   const nextWeek = addDays(thisWeek, 7);
 
   const teams = can(user, "schedule.view") ? await teamsForActor(user, "schedule.view") : [];
-  const [approvals, transfers, weeks, rejected, coverage] = await Promise.all([
+  const [approvals, transfers, weeks, rejected, coverage, attendance] = await Promise.all([
     can(user, "approvals.view") ? countPendingApprovals(user) : null,
     can(user, "transfers.decide") ? countIncomingTransfers(user) : 0,
     Promise.all(
@@ -53,6 +57,7 @@ export default async function DashboardPage() {
     ),
     listUpcomingRejected(user, today),
     weekCoverage(user, teams, thisWeek),
+    can(user, "attendance.view") ? getAttendanceDay(user, today) : null,
   ]);
   const gapDays = Object.values(coverage).reduce((n, c) => n + c.gaps, 0);
 
@@ -64,6 +69,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {attendance && attendance.rows.length > 0 ? <AttendanceCard day={attendance} /> : null}
         {approvals ? (
           <StatCard
             href="/approvals"
@@ -155,6 +161,39 @@ export default async function DashboardPage() {
         </Card>
       ) : null}
     </div>
+  );
+}
+
+/** Today's attendance for the shift running now: how many came, were late, or aren't marked. */
+function AttendanceCard({ day }: { day: AttendanceDay }) {
+  const shift = day.shifts.find((s) => s.id === day.currentShiftId);
+  const rows = shift ? day.rows.filter((r) => r.shiftId === shift.id) : day.rows;
+  const s = summarizeAttendance(rows, day.statuses);
+  return (
+    <Link href={`/attendance?date=${day.date}${shift ? `&shift=${shift.id}` : ""}`}>
+      <Card className="flex items-center gap-4 p-4 transition hover:border-primary/40 hover:shadow">
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <UserCheck className="h-5 w-5" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-2xl font-bold tabular-nums">
+            {s.present}
+            <span className="text-base font-medium text-fg-muted"> / {s.planned}</span>
+          </p>
+          <p className="text-sm text-fg-muted">
+            נוכחות{shift ? ` במשמרת ${shift.name}` : " היום"}
+            {s.late ? ` · ${s.late} איחורים` : ""}
+            {s.absent ? ` · ${s.absent} לא הגיעו` : ""}
+          </p>
+          {s.unmarked > 0 ? (
+            <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-warning-fg">
+              <Clock className="h-3.5 w-3.5" />
+              {s.unmarked} עוד לא סומנו
+            </p>
+          ) : null}
+        </div>
+      </Card>
+    </Link>
   );
 }
 

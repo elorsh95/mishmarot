@@ -9,6 +9,8 @@ export type AuditEntityType =
   | "shift"
   | "location"
   | "absenceType"
+  | "attendanceStatus"
+  | "attendance"
   | "settings"
   | "transfer"
   | "calendar"
@@ -42,6 +44,8 @@ export const AUDIT_ENTITY_LABELS: Record<AuditEntityType, string> = {
   shift: "משמרת",
   location: "מיקום עבודה",
   absenceType: "סוג היעדרות",
+  attendanceStatus: "סטטוס נוכחות",
+  attendance: "נוכחות",
   settings: "הגדרות",
   transfer: "העברת נציג",
   calendar: "לוח חגים",

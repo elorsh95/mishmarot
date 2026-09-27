@@ -22,6 +22,9 @@ export interface Shift {
   /** Coverage: a double shift covers both. */
   coversMorning: boolean;
   coversEvening: boolean;
+  /** Start and end time ("HH:MM"), optional: used for lateness and to find the current shift. */
+  startTime?: string | null;
+  endTime?: string | null;
   color: string;
   sortOrder: number;
   isActive: boolean;
@@ -45,6 +48,19 @@ export interface AbsenceType {
   isActive: boolean;
 }
 
+/** What the shift lead can mark on the attendance screen ("הגיע", "איחר", …). */
+export interface AttendanceStatus {
+  id: string;
+  name: string;
+  /** Whether the agent counts as working this shift. */
+  presence: "present" | "absent";
+  /** A time asked for with this status: arrival (late) or departure (left early). */
+  timeField: "none" | "arrival" | "departure";
+  color: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
 const base = {
   name: z.string().trim().min(1, "יש להזין שם").max(40),
   color: z
@@ -55,6 +71,12 @@ const base = {
   isActive: z.boolean().default(true),
 };
 
+const clockField = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "שעה לא תקינה")
+  .nullable()
+  .default(null);
+
 export const shiftInputSchema = z
   .object({
     ...base,
@@ -62,18 +84,26 @@ export const shiftInputSchema = z
     requiredAgents: z.coerce.number().int().min(0).nullable().default(null),
     coversMorning: z.boolean(),
     coversEvening: z.boolean(),
+    startTime: clockField,
+    endTime: clockField,
   })
   .refine((s) => s.coversMorning || s.coversEvening, "משמרת צריכה לכסות בוקר, ערב או שניהם");
 
 export const locationInputSchema = z.object({ ...base, requiresQuota: z.boolean().default(false) });
 export const absenceTypeInputSchema = z.object(base);
+export const attendanceStatusInputSchema = z.object({
+  ...base,
+  presence: z.enum(["present", "absent"]),
+  timeField: z.enum(["none", "arrival", "departure"]).default("none"),
+});
 
-type Kind = "shifts" | "locations" | "absenceTypes";
+type Kind = "shifts" | "locations" | "absenceTypes" | "attendanceStatuses";
 
 const KIND_META: Record<Kind, { entity: AuditEntityType; label: string }> = {
   shifts: { entity: "shift", label: "משמרת" },
   locations: { entity: "location", label: "מיקום עבודה" },
   absenceTypes: { entity: "absenceType", label: "סוג היעדרות" },
+  attendanceStatuses: { entity: "attendanceStatus", label: "סטטוס נוכחות" },
 };
 
 async function listKind<T extends { sortOrder: number; name: string }>(kind: Kind): Promise<T[]> {
@@ -86,6 +116,7 @@ async function listKind<T extends { sortOrder: number; name: string }>(kind: Kin
 export const listShifts = cache(() => listKind<Shift>("shifts"));
 export const listLocations = cache(() => listKind<WorkLocation>("locations"));
 export const listAbsenceTypes = cache(() => listKind<AbsenceType>("absenceTypes"));
+export const listAttendanceStatuses = cache(() => listKind<AttendanceStatus>("attendanceStatuses"));
 
 export interface Catalog {
   shifts: Shift[];
@@ -157,6 +188,14 @@ export function saveAbsenceType(
   return upsert(actor, "absenceTypes", id, absenceTypeInputSchema.parse(input));
 }
 
+export function saveAttendanceStatus(
+  actor: Actor,
+  id: string | null,
+  input: z.input<typeof attendanceStatusInputSchema>,
+) {
+  return upsert(actor, "attendanceStatuses", id, attendanceStatusInputSchema.parse(input));
+}
+
 /** Seeds default catalog entries into empty collections. Idempotent. */
 export async function ensureDefaultCatalog() {
   const defaults: Record<Kind, Array<Record<string, unknown>>> = {
@@ -202,6 +241,19 @@ export async function ensureDefaultCatalog() {
       { name: "מילואים", color: "#4d7c0f", sortOrder: 3, isActive: true },
       { name: "אחר", color: "#6b7280", sortOrder: 4, isActive: true },
     ],
+    attendanceStatuses: [
+      { name: "הגיע", presence: "present", timeField: "none", color: "#16a34a", sortOrder: 1 },
+      { name: "איחר", presence: "present", timeField: "arrival", color: "#d97706", sortOrder: 2 },
+      { name: "לא הגיע", presence: "absent", timeField: "none", color: "#dc2626", sortOrder: 3 },
+      {
+        name: "יצא מוקדם",
+        presence: "present",
+        timeField: "departure",
+        color: "#7c3aed",
+        sortOrder: 4,
+      },
+      { name: "חולה", presence: "absent", timeField: "none", color: "#0891b2", sortOrder: 5 },
+    ].map((s) => ({ ...s, isActive: true })),
   };
   for (const kind of Object.keys(defaults) as Kind[]) {
     const existing = await col(COLLECTIONS[kind]).limit(1).get();

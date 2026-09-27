@@ -16,6 +16,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  UserCheck,
   UserCog,
   Users,
   UsersRound,
@@ -32,6 +33,7 @@ import { NAV_GROUP_LABELS, type NavGroup, type NavIcon, type NavItem } from "./n
 const ICONS: Record<NavIcon, LucideIcon> = {
   home: Home,
   calendar: CalendarDays,
+  attendance: UserCheck,
   approvals: ClipboardCheck,
   agents: Users,
   transfers: ArrowLeftRight,

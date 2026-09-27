@@ -26,6 +26,8 @@ export const COLLECTIONS = {
   shareLinks: "shareLinks",
   undoBatches: "undoBatches",
   weekTemplates: "weekTemplates",
+  attendanceStatuses: "attendanceStatuses",
+  attendance: "attendance",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

@@ -3,6 +3,7 @@ import type { PermissionKey } from "@/modules/permissions/catalog";
 export type NavIcon =
   | "home"
   | "calendar"
+  | "attendance"
   | "approvals"
   | "agents"
   | "transfers"
@@ -39,6 +40,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: "סידור עבודה",
     icon: "calendar",
     anyOf: ["schedule.view"],
+    group: "work",
+  },
+  {
+    href: "/attendance",
+    label: "נוכחות",
+    icon: "attendance",
+    anyOf: ["attendance.view"],
     group: "work",
   },
   {
