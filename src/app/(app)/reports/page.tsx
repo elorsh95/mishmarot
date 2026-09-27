@@ -1,18 +1,15 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { EmptyState, PageHeader } from "@/components/ui/page-header";
-import { Table, Td, Th } from "@/components/ui/table";
-import { cn } from "@/lib/cn";
-import { monthOf, todayIso } from "@/lib/dates";
+import { todayIso } from "@/lib/dates";
+import { PageHeader } from "@/components/ui/page-header";
 import { requireSessionUser } from "@/modules/auth/session";
 import { can } from "@/modules/permissions/check";
-import { monthlyReport } from "@/modules/reports/service";
-import { homeDays, overQuotaDays } from "@/modules/reports/types";
+import { parseReportRange } from "@/modules/reports/period";
+import { scheduleReport } from "@/modules/reports/service";
 import { QUOTA_PERIOD_LABELS } from "@/modules/schedule/types";
 import { teamsForActor } from "@/modules/teams/service";
 import { ReportFilters } from "./report-filters";
+import { AgentReportTable, ShiftReportTables } from "./report-tables";
 
 export const metadata: Metadata = { title: "דוחות" };
 
@@ -20,122 +17,38 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
   const user = await requireSessionUser();
   if (!can(user, "schedule.view")) notFound();
   const params = await searchParams;
-  const month =
-    typeof params.month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.month)
-      ? params.month
-      : monthOf(todayIso());
+  const range = parseReportRange(params, todayIso());
+  const view = params.view === "shifts" ? "shifts" : "agents";
   const teams = await teamsForActor(user, "schedule.view", { includeInactive: true });
   const teamId =
     typeof params.team === "string" && teams.some((t) => t.id === params.team) ? params.team : "";
-  const report = await monthlyReport(user, month, teamId || null);
-  const showTeam = !teamId && teams.length > 1;
-
-  const total = (pick: (r: (typeof report.rows)[number]) => number) =>
-    report.rows.reduce((sum, r) => sum + pick(r), 0);
+  const report = await scheduleReport(user, range, teamId || null);
 
   return (
     <>
       <PageHeader
-        title="דוח חודשי"
-        description="ימי עבודה, ימי בית והיעדרויות לכל נציג בחודש קלנדרי"
+        title="דוחות"
+        description={
+          view === "shifts"
+            ? "כמה שובצו בכל משמרת, לפי מיקום ויום בשבוע"
+            : "ימי עבודה, ימי בית והיעדרויות לכל נציג"
+        }
       />
       <ReportFilters
-        month={month}
+        range={range}
+        view={view}
         teamId={teamId}
         teams={teams.map((t) => ({ id: t.id, name: t.name }))}
       />
-      <Card>
-        {report.rows.length === 0 ? (
-          <EmptyState title="אין נתונים לחודש זה" />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <thead>
-                <tr>
-                  <Th>נציג</Th>
-                  {showTeam ? <Th>צוות</Th> : null}
-                  <Th className="text-center">ימי עבודה</Th>
-                  {report.shifts.map((s) => (
-                    <Th key={s.id} className="text-center">
-                      {s.name}
-                    </Th>
-                  ))}
-                  <Th className="text-center">ימי בית</Th>
-                  <Th className="text-center">ממתין / נדחה</Th>
-                  {report.absences.map((a) => (
-                    <Th key={a.id} className="text-center">
-                      {a.name}
-                    </Th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {report.rows.map((r) => (
-                  <tr
-                    key={`${r.agentId}-${r.teamName}`}
-                    className={cn(!r.isActive && "text-fg-muted")}
-                  >
-                    <Td className="font-medium">
-                      {r.agentName}
-                      {!r.isActive ? <span className="text-xs"> (לא פעיל)</span> : null}
-                    </Td>
-                    {showTeam ? <Td>{r.teamName}</Td> : null}
-                    <Td className="text-center font-semibold">{r.workDays}</Td>
-                    {report.shifts.map((s) => (
-                      <Td key={s.id} className="text-center">
-                        {r.byShift[s.id] ?? 0}
-                      </Td>
-                    ))}
-                    <Td className="text-center">
-                      <Badge
-                        tone={overQuotaDays(r) > 0 ? "warning" : "neutral"}
-                        title={`מכסה: ${r.quota} ימים ${QUOTA_PERIOD_LABELS[report.quotaPeriod].per}`}
-                      >
-                        {homeDays(r)}
-                      </Badge>
-                    </Td>
-                    <Td className="text-center text-fg-muted">
-                      {r.home.pending || r.home.rejected
-                        ? `${r.home.pending} / ${r.home.rejected}`
-                        : "—"}
-                    </Td>
-                    {report.absences.map((a) => (
-                      <Td key={a.id} className="text-center">
-                        {r.byAbsence[a.id] ?? 0}
-                      </Td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-muted/60 font-semibold">
-                  <Td>סה״כ</Td>
-                  {showTeam ? <Td /> : null}
-                  <Td className="text-center">{total((r) => r.workDays)}</Td>
-                  {report.shifts.map((s) => (
-                    <Td key={s.id} className="text-center">
-                      {total((r) => r.byShift[s.id] ?? 0)}
-                    </Td>
-                  ))}
-                  <Td className="text-center">{total(homeDays)}</Td>
-                  <Td className="text-center">
-                    {total((r) => r.home.pending)} / {total((r) => r.home.rejected)}
-                  </Td>
-                  {report.absences.map((a) => (
-                    <Td key={a.id} className="text-center">
-                      {total((r) => r.byAbsence[a.id] ?? 0)}
-                    </Td>
-                  ))}
-                </tr>
-              </tfoot>
-            </Table>
-          </div>
-        )}
-      </Card>
+      {view === "shifts" ? (
+        <ShiftReportTables report={report} />
+      ) : (
+        <AgentReportTable report={report} showTeam={!teamId && teams.length > 1} />
+      )}
       <p className="mt-2 text-xs text-fg-muted">
-        ימי בית כוללים ימים במסגרת המכסה וימים שאושרו מעבר לה. ימים שממתינים לאישור או שנדחו מוצגים
-        בנפרד. המכסה נספרת {QUOTA_PERIOD_LABELS[report.quotaPeriod].per}; נציג שחרג ממנה החודש מסומן
-        בכתום.
+        {view === "shifts"
+          ? "שיבוצים הם ימי עבודה של נציגים במשמרת. ממוצע ליום הוא מספר הנציגים הממוצע בימים שבהם המשמרת אוישה."
+          : `ימי בית כוללים ימים במסגרת המכסה וימים שאושרו מעבר לה. ימים שממתינים לאישור או שנדחו מוצגים בנפרד. המכסה נספרת ${QUOTA_PERIOD_LABELS[report.quotaPeriod].per}; נציג שחרג ממנה בתקופה מסומן בכתום. לחיצה על כותרת עמודה ממיינת לפיה.`}
       </p>
     </>
   );

@@ -1,20 +1,28 @@
 import type { NextRequest } from "next/server";
-import { formatMonth, monthOf, todayIso } from "@/lib/dates";
+import { todayIso } from "@/lib/dates";
 import { xlsxResponse } from "@/lib/xlsx-response";
 import { getSessionUser } from "@/modules/auth/session";
 import { can } from "@/modules/permissions/check";
-import { monthlyReportXlsx } from "@/modules/reports/excel";
-import { monthlyReport } from "@/modules/reports/service";
+import { reportXlsx } from "@/modules/reports/excel";
+import { parseReportRange, reportRangeLabel } from "@/modules/reports/period";
+import { scheduleReport } from "@/modules/reports/service";
 
-/** Monthly report as Excel: ?month=YYYY-MM&team=<id> (team optional). */
+/** The report as Excel, with the page's params: period/date or from/to, team, view. */
 export async function GET(request: NextRequest) {
   const user = await getSessionUser();
   if (!user) return new Response(null, { status: 401 });
   if (!can(user, "schedule.view")) return new Response(null, { status: 403 });
-  const params = request.nextUrl.searchParams;
-  const monthParam = params.get("month") ?? "";
-  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam) ? monthParam : monthOf(todayIso());
-  const report = await monthlyReport(user, month, params.get("team") || null);
-  const name = `דוח חודשי - ${report.teamName ?? "כל הצוותים"} - ${formatMonth(month)}.xlsx`;
-  return xlsxResponse(await monthlyReportXlsx(report), name, `report-${month}.xlsx`);
+  const params = Object.fromEntries(request.nextUrl.searchParams);
+  const range = parseReportRange(params, todayIso());
+  const view = params.view === "shifts" ? "shifts" : "agents";
+  const report = await scheduleReport(user, range, params.team || null);
+  const title = view === "shifts" ? "דוח משמרות" : "דוח נציגים";
+  // File names can't hold "/", which the date labels use.
+  const label = reportRangeLabel(range).replaceAll("/", ".");
+  const name = `${title} - ${report.teamName ?? "כל הצוותים"} - ${label}.xlsx`;
+  return xlsxResponse(
+    await reportXlsx(report, view),
+    name,
+    `report-${view}-${range.from}-${range.to}.xlsx`,
+  );
 }

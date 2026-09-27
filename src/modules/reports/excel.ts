@@ -1,18 +1,13 @@
 import ExcelJS from "exceljs";
-import {
-  formatDayMonth,
-  formatMonth,
-  formatWeekRange,
-  WEEKDAY_NAMES,
-  weekdayOf,
-} from "@/lib/dates";
+import { formatDayMonth, formatWeekRange, WEEKDAY_NAMES, weekdayOf } from "@/lib/dates";
 import { agentName } from "@/modules/agents/types";
 import { shiftWeekday } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
 import type { WeekView } from "@/modules/schedule/service";
 import { assignmentId, QUOTA_STATUS_LABELS } from "@/modules/schedule/types";
 import { QUOTA_PERIOD_LABELS } from "@/modules/schedule/types";
-import { homeDays, overQuotaDays, type MonthlyReport } from "./types";
+import { reportRangeLabel, type ReportView } from "./period";
+import { homeDays, overQuotaDays, shiftAverage, type Report } from "./types";
 
 const HEADER_FILL: ExcelJS.Fill = {
   type: "pattern",
@@ -49,17 +44,115 @@ function sheetName(name: string, used: Set<string>): string {
   return candidate;
 }
 
-/** Monthly report: one row per agent, with a totals row. */
-export async function monthlyReportXlsx(report: MonthlyReport): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet(formatMonth(report.month), {
+type Column<R> = { header: string; width: number; value: (r: R) => string | number };
+
+/**
+ * Writes a table sheet: a header row, one row per item and a SUM row for the numeric columns
+ * (except those in `noTotal`, and the first `labelColumns` columns).
+ */
+function tableSheet<R>(
+  wb: ExcelJS.Workbook,
+  name: string,
+  columns: Column<R>[],
+  rows: R[],
+  {
+    labelColumns = 1,
+    noTotal = [] as string[],
+    style,
+  }: {
+    labelColumns?: number;
+    noTotal?: string[];
+    style?: (row: ExcelJS.Row, item: R) => void;
+  } = {},
+) {
+  const ws = wb.addWorksheet(name, {
     views: [{ rightToLeft: true, state: "frozen", ySplit: 1, xSplit: 1 }],
   });
-  const columns: Array<{
-    header: string;
-    width: number;
-    value: (r: MonthlyReport["rows"][number]) => string | number;
-  }> = [
+  ws.columns = columns.map((c) => ({ header: c.header, width: c.width }));
+  styleHeader(ws.getRow(1));
+  ws.getRow(1).height = 32;
+  for (const item of rows) {
+    const row = ws.addRow(columns.map((c) => c.value(item)));
+    row.eachCell((c) => (c.border = THIN));
+    style?.(row, item);
+  }
+  if (rows.length > 0) {
+    const last = rows.length + 1;
+    const totals = ws.addRow(
+      columns.map((c, i) => {
+        if (i === 0) return "סה״כ";
+        if (i < labelColumns || noTotal.includes(c.header)) return "";
+        const letter = ws.getColumn(i + 1).letter;
+        return { formula: `SUM(${letter}2:${letter}${last})` };
+      }),
+    );
+    totals.font = { bold: true };
+    totals.eachCell((c) => {
+      c.fill = TOTAL_FILL;
+      c.border = THIN;
+    });
+  }
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
+  return ws;
+}
+
+type AgentRow = Report["rows"][number];
+type ShiftRow = Report["shiftRows"][number];
+
+/** The report as Excel: by agents (one row per agent) or by shifts (plus an absences sheet). */
+export async function reportXlsx(report: Report, view: ReportView): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  const used = new Set<string>();
+  const label = reportRangeLabel(report.range);
+
+  if (view === "shifts") {
+    const weekdays = WEEKDAY_NAMES.map((_, i) => i).filter((i) =>
+      report.shiftRows.some((r) => r.byWeekday[i] > 0),
+    );
+    const locations = report.locations.filter((l) =>
+      report.shiftRows.some((r) => r.byLocation[l.id]),
+    );
+    tableSheet<ShiftRow>(
+      wb,
+      sheetName(`משמרות ${label}`, used),
+      [
+        { header: "משמרת", width: 18, value: (r) => r.name },
+        { header: "שיבוצים", width: 10, value: (r) => r.total },
+        { header: "נציגים", width: 9, value: (r) => r.agents },
+        { header: "ימים", width: 8, value: (r) => r.days },
+        { header: "ממוצע ליום", width: 10, value: (r) => shiftAverage(r) },
+        ...locations.map((l) => ({
+          header: l.name,
+          width: 9,
+          value: (r: ShiftRow) => r.byLocation[l.id] ?? 0,
+        })),
+        ...weekdays.map((i) => ({
+          header: WEEKDAY_NAMES[i],
+          width: 8,
+          value: (r: ShiftRow) => r.byWeekday[i],
+        })),
+        { header: "ממתין לאישור", width: 11, value: (r) => r.pending },
+        { header: "נדחה", width: 8, value: (r) => r.rejected },
+      ],
+      report.shiftRows,
+      // Distinct counts and averages don't add up across shifts.
+      { noTotal: ["נציגים", "ימים", "ממוצע ליום"] },
+    );
+    tableSheet(
+      wb,
+      sheetName("היעדרויות", used),
+      [
+        { header: "סוג היעדרות", width: 18, value: (r: Report["absenceRows"][number]) => r.name },
+        { header: "ימים", width: 8, value: (r) => r.days },
+        { header: "נציגים", width: 9, value: (r) => r.agents },
+      ],
+      report.absenceRows,
+      { noTotal: ["נציגים"] },
+    );
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  }
+
+  const columns: Column<AgentRow>[] = [
     { header: "נציג", width: 22, value: (r) => r.agentName },
     { header: "מספר עובד", width: 12, value: (r) => r.employeeNumber },
     { header: "צוות", width: 14, value: (r) => r.teamName },
@@ -67,7 +160,7 @@ export async function monthlyReportXlsx(report: MonthlyReport): Promise<Buffer> 
     ...report.shifts.map((s) => ({
       header: s.name,
       width: 9,
-      value: (r: MonthlyReport["rows"][number]) => r.byShift[s.id] ?? 0,
+      value: (r: AgentRow) => r.byShift[s.id] ?? 0,
     })),
     { header: "ימי בית", width: 9, value: (r) => homeDays(r) },
     {
@@ -81,42 +174,20 @@ export async function monthlyReportXlsx(report: MonthlyReport): Promise<Buffer> 
     ...report.absences.map((a) => ({
       header: a.name,
       width: 9,
-      value: (r: MonthlyReport["rows"][number]) => r.byAbsence[a.id] ?? 0,
+      value: (r: AgentRow) => r.byAbsence[a.id] ?? 0,
     })),
     { header: "סה״כ היעדרויות", width: 12, value: (r) => r.absenceDays },
   ];
-  ws.columns = columns.map((c) => ({ header: c.header, width: c.width }));
-  styleHeader(ws.getRow(1));
-  ws.getRow(1).height = 32;
-
-  for (const r of report.rows) {
-    const row = ws.addRow(columns.map((c) => c.value(r)));
-    row.eachCell((c) => (c.border = THIN));
-    if (!r.isActive) row.font = { color: { argb: "FF6B7280" } };
-    if (overQuotaDays(r) > 0)
-      row.getCell(columns.findIndex((c) => c.header === "ימי בית") + 1).font = {
-        bold: true,
-        color: { argb: "FFB45309" },
-      };
-  }
-  if (report.rows.length > 0) {
-    const first = 2;
-    const last = report.rows.length + 1;
-    const totals = ws.addRow(
-      columns.map((c, i) => {
-        if (i === 0) return "סה״כ";
-        if (i < 3 || c.header.startsWith("מכסה")) return "";
-        const letter = ws.getColumn(i + 1).letter;
-        return { formula: `SUM(${letter}${first}:${letter}${last})` };
-      }),
-    );
-    totals.font = { bold: true };
-    totals.eachCell((c) => {
-      c.fill = TOTAL_FILL;
-      c.border = THIN;
-    });
-  }
-  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
+  const homeCol = columns.findIndex((c) => c.header === "ימי בית") + 1;
+  tableSheet(wb, sheetName(label, used), columns, report.rows, {
+    labelColumns: 3,
+    noTotal: [columns.find((c) => c.header.startsWith("מכסה"))!.header],
+    style: (row, r) => {
+      if (!r.isActive) row.font = { color: { argb: "FF6B7280" } };
+      if (overQuotaDays(r) > 0)
+        row.getCell(homeCol).font = { bold: true, color: { argb: "FFB45309" } };
+    },
+  });
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
