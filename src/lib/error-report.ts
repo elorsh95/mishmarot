@@ -17,6 +17,8 @@ export interface ErrorContext {
   digest?: string;
   /** "mishmarot" for the server, "mishmarot-web" for errors reported by browsers. */
   service?: string;
+  /** Extra text kept in the log entry but outside the grouping (e.g. a signed-out report's text). */
+  detail?: string;
 }
 
 const REPORTED_ERROR_EVENT =
@@ -50,6 +52,7 @@ export function logError(error: unknown, context: ErrorContext) {
     },
     source: context.source,
     digest: context.digest,
+    detail: context.detail,
   };
   // stderr: Cloud Run parses JSON lines into structured log entries.
   process.stderr.write(`${JSON.stringify(entry)}\n`);
