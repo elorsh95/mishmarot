@@ -45,6 +45,7 @@ export default async function AgentsPage() {
           .map((t) => t.id)}
         catalog={catalog}
         defaultQuota={settings.defaultMonthlyQuota}
+        quotaPeriod={settings.quotaPeriod}
         canRequestTransfer={can(user, "transfers.request")}
       />
     </>

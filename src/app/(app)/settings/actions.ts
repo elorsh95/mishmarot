@@ -13,7 +13,7 @@ import {
 import { clearSpecialDay, setSpecialDay, specialDaySchema } from "@/modules/calendar/service";
 import { settingsSchema, updateSettings } from "@/modules/settings/service";
 
-const REVALIDATE = ["/settings", "/schedule", "/agents", "/"];
+const REVALIDATE = ["/settings", "/schedule", "/agents", "/approvals", "/"];
 const optionalId = z.string().min(1).nullable();
 
 export async function updateSettingsAction(input: unknown) {

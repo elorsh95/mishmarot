@@ -1,14 +1,7 @@
 import type { DocumentReference, Transaction } from "firebase-admin/firestore";
 import { db } from "@/lib/firebase/admin";
 import { col, COLLECTIONS, fromDoc, serverNow } from "@/lib/firebase/collections";
-import {
-  formatDateWithDay,
-  monthOf,
-  todayIso,
-  weekStartOf,
-  type IsoDate,
-  type IsoMonth,
-} from "@/lib/dates";
+import { formatDateWithDay, monthOf, todayIso, weekStartOf, type IsoDate } from "@/lib/dates";
 import { DomainError } from "@/lib/errors";
 import { emit } from "@/lib/events";
 import { agentName, type Agent } from "@/modules/agents/types";
@@ -16,8 +9,8 @@ import { auditInTx } from "@/modules/audit/service";
 import { getDayInfosInTx } from "@/modules/calendar/service";
 import { getCatalog, type Catalog } from "@/modules/catalog/service";
 import type { Actor } from "@/modules/permissions/check";
-import { getSettingsInTx } from "@/modules/settings/service";
-import { computeQuotaStatuses } from "./quota";
+import { getSettings, getSettingsInTx } from "@/modules/settings/service";
+import { computeQuotaStatuses, quotaPeriodField, quotaPeriodKey } from "./quota";
 import { describeEntry, editBlockReason, entryError } from "./rules";
 import {
   assignmentId,
@@ -33,7 +26,7 @@ import {
 /**
  * Every schedule change goes through applyChanges: single-cell edits, copying a week and
  * filling from defaults. In one transaction per group of agents it validates permissions and
- * locks, writes the entries, re-runs the monthly quota rule for each affected agent-month,
+ * locks, writes the entries, re-runs the quota rule for each affected agent-period (week or month),
  * opens or cancels approval requests, and writes the audit log.
  */
 
@@ -122,17 +115,22 @@ async function applyInTx(
     agentSnaps.filter((s) => s.exists).map((s) => [s.id, fromDoc<Agent>(s)] as const),
   );
 
-  const monthKeys = new Map<string, { agentId: string; month: IsoMonth }>();
+  // The quota counts per agent and period (a week or a calendar month, per the settings).
+  const period = settings.quotaPeriod;
+  const periodKeyOf = (op: { agentId: string; date: IsoDate }) =>
+    `${op.agentId}|${quotaPeriodKey(op.date, period)}`;
+  const periodKeys = new Map<string, { agentId: string; key: string }>();
   for (const op of ops) {
-    const month = monthOf(op.date);
-    monthKeys.set(`${op.agentId}|${month}`, { agentId: op.agentId, month });
+    periodKeys.set(periodKeyOf(op), { agentId: op.agentId, key: quotaPeriodKey(op.date, period) });
   }
-  const monthEntries = new Map<string, Map<string, Assignment>>();
-  for (const [key, { agentId, month }] of monthKeys) {
+  const periodEntries = new Map<string, Map<string, Assignment>>();
+  for (const [k, { agentId, key }] of periodKeys) {
     const snap = await tx.get(
-      col(COLLECTIONS.assignments).where("agentId", "==", agentId).where("month", "==", month),
+      col(COLLECTIONS.assignments)
+        .where("agentId", "==", agentId)
+        .where(quotaPeriodField(period), "==", key),
     );
-    monthEntries.set(key, new Map(snap.docs.map((d) => [d.id, fromDoc<Assignment>(d)])));
+    periodEntries.set(k, new Map(snap.docs.map((d) => [d.id, fromDoc<Assignment>(d)])));
   }
 
   const weekKeys = new Set<string>();
@@ -176,30 +174,29 @@ async function applyInTx(
         continue;
       }
     }
-    const existing = monthEntries
-      .get(`${op.agentId}|${monthOf(op.date)}`)
-      ?.get(assignmentId(op.agentId, op.date));
+    const existing = periodEntries.get(periodKeyOf(op))?.get(assignmentId(op.agentId, op.date));
     if (sameEntry(existing, op.entry)) continue; // no-op
     accepted.push(op);
   }
 
-  // ---------- compute & write per agent-month ----------
+  // ---------- compute & write per agent-period ----------
   const quotaLocations = new Set(catalog.locations.filter((l) => l.requiresQuota).map((l) => l.id));
-  const opsByMonth = new Map<string, ChangeOp[]>();
+  const opsByPeriod = new Map<string, ChangeOp[]>();
   for (const op of accepted) {
-    const key = `${op.agentId}|${monthOf(op.date)}`;
-    opsByMonth.set(key, [...(opsByMonth.get(key) ?? []), op]);
+    const key = periodKeyOf(op);
+    opsByPeriod.set(key, [...(opsByPeriod.get(key) ?? []), op]);
   }
 
-  for (const [key, monthOps] of opsByMonth) {
-    const { agentId, month } = monthKeys.get(key)!;
+  for (const [key, periodOps] of opsByPeriod) {
+    const { agentId } = periodKeys.get(key)!;
     const agent = agents.get(agentId)!;
+    // monthlyQuota/defaultMonthlyQuota hold the quota for whichever period is configured.
     const quota = agent.monthlyQuota ?? settings.defaultMonthlyQuota;
-    const current = monthEntries.get(key)!;
+    const current = periodEntries.get(key)!;
     const next = new Map<string, Draft>(current);
     const targets = new Set<string>();
 
-    for (const op of monthOps) {
+    for (const op of periodOps) {
       const id = assignmentId(agentId, op.date);
       targets.add(id);
       const old = current.get(id);
@@ -217,7 +214,7 @@ async function applyInTx(
         agentId,
         teamId: agent.teamId,
         date: op.date,
-        month,
+        month: monthOf(op.date),
         weekStart: weekStartOf(op.date),
         kind: op.entry.kind,
         shiftId: op.entry.kind === "shift" ? op.entry.shiftId : null,
@@ -313,7 +310,7 @@ async function applyInTx(
           entityType: "assignment",
           entityId: id,
           teamId: agent.teamId,
-          summary: `סטטוס השיבוץ של ${agentName(agent)} ל${formatDateWithDay(draft.date)} השתנה ל"${QUOTA_STATUS_LABELS[status] || "רגיל"}" בעקבות שינוי אחר בחודש`,
+          summary: `סטטוס השיבוץ של ${agentName(agent)} ל${formatDateWithDay(draft.date)} השתנה ל"${QUOTA_STATUS_LABELS[status] || "רגיל"}" בעקבות שינוי אחר באותה תקופה`,
           before: { quotaStatus: old?.quotaStatus, approvalId: old?.approvalId },
           after: { quotaStatus: status, approvalId },
         });
@@ -376,21 +373,34 @@ function cancelApproval(
 }
 
 /**
- * Re-runs the quota rule for an agent over the given months (e.g. after the agent's quota
- * changed). Uses no-op-safe writes; permission checks are the caller's responsibility.
+ * Re-runs the quota rule for an agent in every quota period from `fromDate`'s period onward
+ * (e.g. after the agent's quota, the default quota or the quota period changed).
+ * Uses no-op-safe writes; permission checks are the caller's responsibility.
  */
-export async function recomputeAgentMonths(actor: Actor, agentId: string, months: IsoMonth[]) {
-  const catalog = await getCatalog();
+export async function recomputeAgentQuota(actor: Actor, agentId: string, fromDate: IsoDate) {
+  const [catalog, settings] = await Promise.all([getCatalog(), getSettings()]);
+  const period = settings.quotaPeriod;
+  const field = quotaPeriodField(period);
+  const from = period === "week" ? weekStartOf(fromDate) : `${monthOf(fromDate)}-01`;
+  const snap = await col(COLLECTIONS.assignments)
+    .where("agentId", "==", agentId)
+    .where("date", ">=", from)
+    .select(field)
+    .get();
+  const keys = [
+    ...new Set([quotaPeriodKey(fromDate, period), ...snap.docs.map((d) => String(d.get(field)))]),
+  ].sort();
+
   const quotaLocations = new Set(catalog.locations.filter((l) => l.requiresQuota).map((l) => l.id));
   const pending: string[] = [];
-  for (const month of months) {
+  for (const key of keys) {
     await db().runTransaction(async (tx) => {
       const settings = await getSettingsInTx(tx);
       const agentSnap = await tx.get(col(COLLECTIONS.agents).doc(agentId));
       if (!agentSnap.exists) return;
       const agent = fromDoc<Agent>(agentSnap);
       const snap = await tx.get(
-        col(COLLECTIONS.assignments).where("agentId", "==", agentId).where("month", "==", month),
+        col(COLLECTIONS.assignments).where("agentId", "==", agentId).where(field, "==", key),
       );
       const entries = snap.docs.map((d) => fromDoc<Assignment>(d));
       const quota = agent.monthlyQuota ?? settings.defaultMonthlyQuota;
@@ -436,3 +446,18 @@ export async function recomputeAgentMonths(actor: Actor, agentId: string, months
 }
 
 export type { QuotaStatus };
+
+/**
+ * Re-runs the quota rule for every agent with entries from `fromDate`'s period onward.
+ * Used when the default quota or the quota period changes.
+ */
+export async function recomputeAllQuotas(actor: Actor, fromDate: IsoDate): Promise<number> {
+  const from =
+    `${monthOf(fromDate)}-01` < weekStartOf(fromDate)
+      ? `${monthOf(fromDate)}-01`
+      : weekStartOf(fromDate);
+  const snap = await col(COLLECTIONS.assignments).where("date", ">=", from).select("agentId").get();
+  const agentIds = [...new Set(snap.docs.map((d) => String(d.get("agentId"))))];
+  for (const agentId of agentIds) await recomputeAgentQuota(actor, agentId, fromDate);
+  return agentIds.length;
+}

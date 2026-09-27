@@ -11,7 +11,8 @@ import { shiftWeekday } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
 import type { WeekView } from "@/modules/schedule/service";
 import { assignmentId, QUOTA_STATUS_LABELS } from "@/modules/schedule/types";
-import { homeDays, type MonthlyReport } from "./types";
+import { QUOTA_PERIOD_LABELS } from "@/modules/schedule/types";
+import { homeDays, overQuotaDays, type MonthlyReport } from "./types";
 
 const HEADER_FILL: ExcelJS.Fill = {
   type: "pattern",
@@ -69,7 +70,11 @@ export async function monthlyReportXlsx(report: MonthlyReport): Promise<Buffer> 
       value: (r: MonthlyReport["rows"][number]) => r.byShift[s.id] ?? 0,
     })),
     { header: "ימי בית", width: 9, value: (r) => homeDays(r) },
-    { header: "מכסה", width: 8, value: (r) => r.quota },
+    {
+      header: `מכסה (${QUOTA_PERIOD_LABELS[report.quotaPeriod].per})`,
+      width: 10,
+      value: (r) => r.quota,
+    },
     { header: "מעבר למכסה (אושר)", width: 12, value: (r) => r.home.approved },
     { header: "ממתין לאישור", width: 11, value: (r) => r.home.pending },
     { header: "נדחה", width: 8, value: (r) => r.home.rejected },
@@ -88,7 +93,7 @@ export async function monthlyReportXlsx(report: MonthlyReport): Promise<Buffer> 
     const row = ws.addRow(columns.map((c) => c.value(r)));
     row.eachCell((c) => (c.border = THIN));
     if (!r.isActive) row.font = { color: { argb: "FF6B7280" } };
-    if (homeDays(r) > r.quota)
+    if (overQuotaDays(r) > 0)
       row.getCell(columns.findIndex((c) => c.header === "ימי בית") + 1).font = {
         bold: true,
         color: { argb: "FFB45309" },
@@ -100,7 +105,7 @@ export async function monthlyReportXlsx(report: MonthlyReport): Promise<Buffer> 
     const totals = ws.addRow(
       columns.map((c, i) => {
         if (i === 0) return "סה״כ";
-        if (i < 3 || c.header === "מכסה") return "";
+        if (i < 3 || c.header.startsWith("מכסה")) return "";
         const letter = ws.getColumn(i + 1).letter;
         return { formula: `SUM(${letter}${first}:${letter}${last})` };
       }),

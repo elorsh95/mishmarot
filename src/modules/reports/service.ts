@@ -27,6 +27,7 @@ export async function monthlyReport(
   const empty: MonthlyReport = {
     month,
     teamName: teamId ? (selected[0]?.name ?? null) : null,
+    quotaPeriod: settings.quotaPeriod,
     shifts: catalog.shifts.map((s) => ({ id: s.id, name: s.name })),
     absences: catalog.absenceTypes.map((a) => ({ id: a.id, name: a.name })),
     rows: [],

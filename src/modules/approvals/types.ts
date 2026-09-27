@@ -12,7 +12,7 @@ export interface ApprovalRequest {
   month: IsoMonth;
   shiftId: string | null;
   locationId: string | null;
-  /** Which counted quota day of the month this is (e.g. 3 = the third home day). */
+  /** Which counted quota day of the period (week or month) this is, e.g. 3 = the third home day. */
   position: number;
   quota: number;
   status: ApprovalStatus;
@@ -29,8 +29,10 @@ export interface ApprovalRequest {
 export interface ApprovalListItem extends ApprovalRequest {
   agentName: string;
   employeeNumber: string;
-  /** Other counted quota days of the agent in the same month. */
-  monthQuotaDates: IsoDate[];
+  /** The agent's counted quota days in the same quota period (week or month). */
+  quotaDates: IsoDate[];
+  /** e.g. "בשבוע של 13.9" or "בספטמבר 2026". */
+  periodLabel: string;
   /** The day has arrived and the request is still pending. */
   urgent: boolean;
 }

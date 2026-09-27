@@ -10,13 +10,12 @@ import {
 import {
   addDays,
   formatWeekRange,
-  monthOf,
+  MONTH_NAMES,
   todayIso,
   weekDates,
   weekdayOf,
   weekStartOf,
   type IsoDate,
-  type IsoMonth,
 } from "@/lib/dates";
 import { DomainError, NotFoundError } from "@/lib/errors";
 import { emit } from "@/lib/events";
@@ -29,7 +28,7 @@ import { assertCanForTeam, canForTeam, teamScope, type Actor } from "@/modules/p
 import { getSettings } from "@/modules/settings/service";
 import { getTeam, type Team } from "@/modules/teams/service";
 import { applyChanges, type ApplyResult } from "./engine";
-import { countUsedQuotaDays } from "./quota";
+import { countUsedQuotaDays, quotaPeriodField, quotaPeriodKey } from "./quota";
 import { isPastWeek } from "./rules";
 import {
   assignmentId,
@@ -37,12 +36,17 @@ import {
   type Assignment,
   type ChangeOp,
   type EntryInput,
+  type QuotaPeriod,
   type WeekSchedule,
   type WeekStatus,
 } from "./types";
 
 export interface QuotaUsage {
-  month: IsoMonth;
+  /** The quota period: a week start (Sunday) or a month (YYYY-MM). */
+  key: string;
+  period: QuotaPeriod;
+  /** Short label for the period, e.g. "השבוע" or "ספטמבר". */
+  label: string;
   used: number;
   quota: number;
 }
@@ -59,6 +63,7 @@ export interface WeekView {
   assignments: Record<string, Assignment>;
   week: WeekSchedule;
   quotaUsage: Record<string, QuotaUsage[]>;
+  quotaPeriod: QuotaPeriod;
   /** Decision details for entries that went through approval, keyed by approval id. */
   approvals: Record<string, ApprovalInfo>;
   isPast: boolean;
@@ -144,22 +149,28 @@ export async function getWeekView(
 
   const dayInfo = await getDayInfos(days);
 
-  // Monthly quota usage for the months this week touches.
-  const months = [...new Set(days.map(monthOf))];
+  // Quota usage for the quota periods this week touches: the week itself, or its month(s).
+  const period = settings.quotaPeriod;
+  const periodKeys = [...new Set(days.map((d) => quotaPeriodKey(d, period)))];
   const quotaLocations = new Set(catalog.locations.filter((l) => l.requiresQuota).map((l) => l.id));
-  const monthSnaps = await Promise.all(
-    months.map((m) =>
-      col(COLLECTIONS.assignments).where("teamId", "==", teamId).where("month", "==", m).get(),
+  const periodSnaps = await Promise.all(
+    periodKeys.map((k) =>
+      col(COLLECTIONS.assignments)
+        .where("teamId", "==", teamId)
+        .where(quotaPeriodField(period), "==", k)
+        .get(),
     ),
   );
   const quotaUsage: Record<string, QuotaUsage[]> = {};
   for (const agent of agents) {
-    quotaUsage[agent.id] = months.map((month, i) => {
-      const entries = monthSnaps[i].docs
+    quotaUsage[agent.id] = periodKeys.map((key, i) => {
+      const entries = periodSnaps[i].docs
         .map((d) => fromDoc<Assignment>(d))
         .filter((a) => a.agentId === agent.id);
       return {
-        month,
+        key,
+        period,
+        label: period === "week" ? "השבוע" : MONTH_NAMES[Number(key.slice(5)) - 1],
         used: countUsedQuotaDays(entries, quotaLocations),
         quota: agent.monthlyQuota ?? settings.defaultMonthlyQuota,
       };
@@ -204,6 +215,7 @@ export async function getWeekView(
     assignments,
     week,
     quotaUsage,
+    quotaPeriod: period,
     approvals,
     isPast,
     canEdit,

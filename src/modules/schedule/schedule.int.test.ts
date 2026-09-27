@@ -3,6 +3,7 @@ import { col, COLLECTIONS, fromDoc } from "@/lib/firebase/collections";
 import { updateAgent, getAgent } from "@/modules/agents/service";
 import { decideApproval, listApprovals } from "@/modules/approvals/service";
 import { actors, baseData, clearEmulator, createAgentDoc, createTeamDoc } from "@/test/helpers";
+import { updateSettings } from "@/modules/settings/service";
 import { applyChanges } from "./engine";
 import { clearSpecialDay, setSpecialDay } from "@/modules/calendar/service";
 import {
@@ -63,7 +64,7 @@ describe("monthly home quota", () => {
     const list = await listApprovals(actors.centerManager(), { status: "pending" });
     expect(list).toHaveLength(1);
     expect(list[0].position).toBe(3);
-    expect(list[0].monthQuotaDates).toEqual(["2030-03-03", "2030-03-04", "2030-03-05"]);
+    expect(list[0].quotaDates).toEqual(["2030-03-03", "2030-03-04", "2030-03-05"]);
   });
 
   it("office days do not count and the count resets each calendar month", async () => {
@@ -424,5 +425,38 @@ describe("bulk scheduling", () => {
     const cleared = await setEntries(tm, cells.slice(0, 2), null);
     expect(cleared.changed).toBe(2);
     expect(await entry("a1", "2030-03-03")).toBeNull();
+  });
+});
+
+describe("weekly quota period", () => {
+  it("counts home days per week and recomputes when the period setting changes", async () => {
+    const tm = actors.teamManager(["renault"]);
+    // Two home days in one week, two in the next (all in March 2030)
+    for (const d of ["2030-03-03", "2030-03-04", "2030-03-10", "2030-03-11"]) {
+      await setDayEntry(tm, "a1", d, home());
+    }
+    // Monthly quota of 2: the 3rd and 4th home days of March are pending
+    expect((await entry("a1", "2030-03-10"))?.quotaStatus).toBe("pending");
+    expect((await entry("a1", "2030-03-11"))?.quotaStatus).toBe("pending");
+
+    // Switching to a weekly quota re-runs the rule for today's period onward (these dates are
+    // in the future): each week is within its own quota of 2
+    await updateSettings(actors.admin(), { defaultMonthlyQuota: 2, quotaPeriod: "week" });
+    expect((await entry("a1", "2030-03-10"))?.quotaStatus).toBe("within_quota");
+    expect((await entry("a1", "2030-03-11"))?.quotaStatus).toBe("within_quota");
+    const approvals = await approvalsFor("a1");
+    expect(approvals.every((a) => a.status !== "pending")).toBe(true);
+
+    // A third home day in the same week needs approval
+    const third = await setDayEntry(tm, "a1", "2030-03-12", home());
+    expect(third.pendingApprovalIds).toHaveLength(1);
+    const view = await getWeekView(tm, "renault", "2030-03-10");
+    expect(view.quotaPeriod).toBe("week");
+    expect(view.quotaUsage.a1).toEqual([
+      { key: "2030-03-10", period: "week", label: "השבוע", used: 3, quota: 2 },
+    ]);
+    const list = await listApprovals(actors.centerManager(), { status: "pending" });
+    expect(list[0]).toMatchObject({ position: 3, periodLabel: "בשבוע של 10.3" });
+    expect(list[0].quotaDates).toEqual(["2030-03-10", "2030-03-11", "2030-03-12"]);
   });
 });

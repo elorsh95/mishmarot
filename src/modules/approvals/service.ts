@@ -9,14 +9,22 @@ import {
   fromDocOrNull,
   serverNow,
 } from "@/lib/firebase/collections";
-import { formatDateWithDay, todayIso, type IsoDate, type IsoMonth } from "@/lib/dates";
+import {
+  formatDayMonth,
+  formatDateWithDay,
+  formatMonth,
+  todayIso,
+  type IsoDate,
+  type IsoMonth,
+} from "@/lib/dates";
 import { DomainError, NotFoundError } from "@/lib/errors";
 import { emit } from "@/lib/events";
 import { agentName, type Agent } from "@/modules/agents/types";
 import { auditInTx } from "@/modules/audit/service";
 import { getCatalog } from "@/modules/catalog/service";
 import { assertCanForTeam, teamScope, type Actor } from "@/modules/permissions/check";
-import { isQuotaDay } from "@/modules/schedule/quota";
+import { isQuotaDay, quotaPeriodField, quotaPeriodKey } from "@/modules/schedule/quota";
+import { getSettings } from "@/modules/settings/service";
 import { describeEntry } from "@/modules/schedule/rules";
 import type { Assignment } from "@/modules/schedule/types";
 import type { ApprovalListItem, ApprovalRequest } from "./types";
@@ -65,24 +73,26 @@ export async function listApprovals(
   const agentSnaps = await db().getAll(...agentIds.map((id) => col(COLLECTIONS.agents).doc(id)));
   const agents = new Map(agentSnaps.filter((s) => s.exists).map((s) => [s.id, fromDoc<Agent>(s)]));
 
-  // Quota days per agent-month, for the "already this month" column.
-  const catalog = await getCatalog();
+  // Quota days per agent and quota period (week or month), for the "already this period" column.
+  const [catalog, settings] = await Promise.all([getCatalog(), getSettings()]);
+  const period = settings.quotaPeriod;
+  const periodOf = (a: ApprovalRequest) => `${a.agentId}|${quotaPeriodKey(a.date, period)}`;
   const quotaLocations = new Set(catalog.locations.filter((l) => l.requiresQuota).map((l) => l.id));
-  const monthKeys = [...new Set(approvals.map((a) => `${a.agentId}|${a.month}`))];
-  const monthDates = new Map<string, IsoDate[]>();
+  const periodKeys = [...new Set(approvals.map(periodOf))];
+  const periodDates = new Map<string, IsoDate[]>();
   await Promise.all(
-    monthKeys.map(async (key) => {
-      const [agentId, month] = key.split("|");
+    periodKeys.map(async (key) => {
+      const [agentId, periodKey] = key.split("|");
       const snap = await col(COLLECTIONS.assignments)
         .where("agentId", "==", agentId)
-        .where("month", "==", month)
+        .where(quotaPeriodField(period), "==", periodKey)
         .get();
       const dates = snap.docs
         .map((d) => fromDoc<Assignment>(d))
         .filter((a) => isQuotaDay(a, quotaLocations) && a.quotaStatus !== "rejected")
         .map((a) => a.date)
         .sort();
-      monthDates.set(key, dates);
+      periodDates.set(key, dates);
     }),
   );
 
@@ -92,7 +102,11 @@ export async function listApprovals(
       ...a,
       agentName: agent ? agentName(agent) : "נציג שנמחק",
       employeeNumber: agent?.employeeNumber ?? "",
-      monthQuotaDates: monthDates.get(`${a.agentId}|${a.month}`) ?? [],
+      quotaDates: periodDates.get(periodOf(a)) ?? [],
+      periodLabel:
+        period === "week"
+          ? `בשבוע של ${formatDayMonth(quotaPeriodKey(a.date, "week"))}`
+          : `ב${formatMonth(a.month)}`,
       urgent: a.status === "pending" && a.date <= today,
     };
   });

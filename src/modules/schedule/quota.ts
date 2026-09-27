@@ -1,10 +1,21 @@
-import type { IsoDate } from "@/lib/dates";
-import type { EntryKind, QuotaStatus } from "./types";
+import { monthOf, weekStartOf, type IsoDate } from "@/lib/dates";
+import type { EntryKind, QuotaPeriod, QuotaStatus } from "./types";
+
+/** The quota period a date falls in: its week (Sunday) or its calendar month. */
+export function quotaPeriodKey(date: IsoDate, period: QuotaPeriod): string {
+  return period === "week" ? weekStartOf(date) : monthOf(date);
+}
+
+/** The assignment field that holds the period key. */
+export function quotaPeriodField(period: QuotaPeriod): "weekStart" | "month" {
+  return period === "week" ? "weekStart" : "month";
+}
 
 /**
- * The monthly quota rule, as a pure function.
+ * The quota rule, as a pure function.
  *
- * Within one agent and one calendar month, days at a quota location (e.g. home) are ordered by
+ * Within one agent and one quota period (a week or a calendar month, per the settings), days at a
+ * quota location (e.g. home) are ordered by
  * date. The first `quota` days are within quota; from quota+1 onward each day needs approval.
  *
  * - Ordering is by date, not by entry order, so the result doesn't depend on how the week was filled.
@@ -23,7 +34,7 @@ export interface QuotaEntry {
 
 export interface QuotaResult {
   status: QuotaStatus;
-  /** 1-based index among the month's counted quota days (0 when not counted). */
+  /** 1-based index among the period's counted quota days (0 when not counted). */
   position: number;
 }
 

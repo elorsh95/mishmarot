@@ -1,6 +1,6 @@
 import { Home } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { formatDayMonth, formatMonth, WEEKDAY_NAMES, weekdayOf } from "@/lib/dates";
+import { formatDayMonth, WEEKDAY_NAMES, weekdayOf } from "@/lib/dates";
 import { agentName } from "@/modules/agents/types";
 import type { Catalog } from "@/modules/catalog/service";
 import { shiftWeekday } from "@/modules/calendar/types";
@@ -26,7 +26,6 @@ export function WeekSheet({
   printedBy: string;
 }) {
   const agents = view.agents.filter((a) => a.inTeam && (a.isActive || hasEntries(view, a.id)));
-  const months = [...new Set(view.days.map((d) => d.slice(0, 7)))];
 
   return (
     <section className="sheet rounded-lg bg-white p-6 text-[11px] text-black shadow print:rounded-none print:p-0 print:shadow-none">
@@ -79,20 +78,15 @@ export function WeekSheet({
                   <div className="font-semibold">{agentName(agent)}</div>
                   <div className="text-[9px] text-gray-600">
                     {agent.employeeNumber}
-                    {view.quotaUsage[agent.id]
-                      ?.filter((u) => months.includes(u.month))
-                      .map((u, i) => (
-                        <span
-                          key={u.month}
-                          className={agent.employeeNumber || i > 0 ? "ms-1.5" : ""}
-                        >
-                          {agent.employeeNumber || i > 0 ? "· " : ""}בית
-                          {months.length > 1 ? ` ${formatMonth(u.month).split(" ")[0]}` : ""}:{" "}
-                          <span dir="ltr">
-                            {u.used}/{u.quota}
-                          </span>
+                    {view.quotaUsage[agent.id]?.map((u, i, all) => (
+                      <span key={u.key} className={agent.employeeNumber || i > 0 ? "ms-1.5" : ""}>
+                        {agent.employeeNumber || i > 0 ? "· " : ""}בית
+                        {all.length > 1 ? ` ${u.label}` : ""}:{" "}
+                        <span dir="ltr">
+                          {u.used}/{u.quota}
                         </span>
-                      ))}
+                      </span>
+                    ))}
                   </div>
                 </th>
                 {view.days.map((date) => (
@@ -149,7 +143,7 @@ export function WeekSheet({
         <span className="flex items-center gap-1">
           <Home className="h-2.5 w-2.5" /> עבודה ממיקום הדורש מכסה
         </span>
-        <span>״ממתין לאישור״ / ״נדחה״: שיבוץ מעבר למכסה החודשית</span>
+        <span>״ממתין לאישור״ / ״נדחה״: שיבוץ מעבר למכסת הבית</span>
       </footer>
     </section>
   );

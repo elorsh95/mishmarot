@@ -32,7 +32,6 @@ import {
   addDays,
   formatDate,
   formatDayMonth,
-  monthOf,
   todayIso,
   weekStartOf,
   WEEKDAY_NAMES,
@@ -43,6 +42,7 @@ import { shiftRunsOn, shiftWeekday, type DayInfo } from "@/modules/calendar/type
 import type { Catalog } from "@/modules/catalog/service";
 import type { SkippedOp } from "@/modules/schedule/engine";
 import type { WeekView } from "@/modules/schedule/service";
+import { quotaPeriodKey } from "@/modules/schedule/quota";
 import { assignmentId, type Assignment } from "@/modules/schedule/types";
 import {
   clearWeekAction,
@@ -86,7 +86,7 @@ export function ScheduleBoard({
   const entryOf = (agentId: string, date: string) =>
     view.assignments[assignmentId(agentId, date)] ?? null;
   const usageOf = (agentId: string, date: string) =>
-    view.quotaUsage[agentId]?.find((u) => u.month === monthOf(date));
+    view.quotaUsage[agentId]?.find((u) => u.key === quotaPeriodKey(date, view.quotaPeriod));
 
   const cellKey = (agentId: string, date: string) => `${agentId}|${date}`;
   const selectable = (agent: Agent & { inTeam: boolean }, date: string) =>
@@ -566,7 +566,6 @@ function HolidayTag({ info }: { info?: DayInfo }) {
 }
 
 function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell, selection }: GridProps) {
-  const months = [...new Set(view.days.map(monthOf))];
   return (
     <Card className="hidden overflow-hidden md:block">
       <div className="overflow-x-auto">
@@ -631,12 +630,8 @@ function AgentsGrid({ view, catalog, editable, entryOf, usageOf, onCell, selecti
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-0.5">
-                      {months.map((m) => (
-                        <QuotaBadge
-                          key={m}
-                          showMonth={months.length > 1}
-                          usage={view.quotaUsage[agent.id]?.find((u) => u.month === m)}
-                        />
+                      {(view.quotaUsage[agent.id] ?? []).map((u, _, all) => (
+                        <QuotaBadge key={u.key} showLabel={all.length > 1} usage={u} />
                       ))}
                     </div>
                   </div>

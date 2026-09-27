@@ -2,6 +2,17 @@ import type { IsoDate, IsoMonth } from "@/lib/dates";
 
 export type EntryKind = "shift" | "absence";
 
+/** What the home quota counts over: each week (Sunday–Saturday) or each calendar month. */
+export type QuotaPeriod = "week" | "month";
+
+export const QUOTA_PERIOD_LABELS: Record<
+  QuotaPeriod,
+  { adjective: string; per: string; this: string }
+> = {
+  week: { adjective: "שבועית", per: "בשבוע", this: "בשבוע זה" },
+  month: { adjective: "חודשית", per: "בחודש", this: "בחודש זה" },
+};
+
 /**
  * Quota state of a day at a quota location (e.g. home):
  * - none: not at a quota location (or an absence)

@@ -2,11 +2,11 @@ import type { Transaction } from "firebase-admin/firestore";
 import { z } from "zod";
 import { db } from "@/lib/firebase/admin";
 import { col, COLLECTIONS, fromDoc, fromDocOrNull, serverNow } from "@/lib/firebase/collections";
-import { monthOf, todayIso, type IsoDate } from "@/lib/dates";
+import { todayIso, type IsoDate } from "@/lib/dates";
 import { DomainError, ForbiddenError, NotFoundError } from "@/lib/errors";
 import { auditInTx } from "@/modules/audit/service";
 import { assertCanForTeam, canForTeam, teamScope, type Actor } from "@/modules/permissions/check";
-import { recomputeAgentMonths } from "@/modules/schedule/engine";
+import { recomputeAgentQuota } from "@/modules/schedule/engine";
 import { getTeam } from "@/modules/teams/service";
 import { agentName, type Agent } from "./types";
 
@@ -159,15 +159,8 @@ export async function updateAgent(actor: Actor, agentId: string, input: AgentInp
   });
 
   if (quotaChanged) {
-    // Re-run the quota rule for the current month and every later month the agent has entries in.
-    const from = `${monthOf(today)}-01`;
-    const snap = await col(COLLECTIONS.assignments)
-      .where("agentId", "==", agentId)
-      .where("date", ">=", from)
-      .select("month")
-      .get();
-    const months = [...new Set([monthOf(today), ...snap.docs.map((d) => String(d.get("month")))])];
-    await recomputeAgentMonths(actor, agentId, months.sort());
+    // Re-run the quota rule for the current period and every later one the agent has entries in.
+    await recomputeAgentQuota(actor, agentId, today);
   }
 }
 
