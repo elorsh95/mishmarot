@@ -12,6 +12,7 @@ import {
   Eraser,
   FileDown,
   FileSpreadsheet,
+  LayoutTemplate,
   Lock,
   Plus,
   Send,
@@ -57,6 +58,7 @@ import { BulkEditor } from "./bulk-editor";
 import { CellEditor, QuotaBadge, QuotaSummaryBadge, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
 import { ShareDialog } from "./share-dialog";
+import { TemplatesDialog } from "./templates-dialog";
 
 type ViewMode = "agents" | "coverage";
 
@@ -80,6 +82,7 @@ export function ScheduleBoard({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkEditing, setBulkEditing] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [templates, setTemplates] = useState(false);
   const bulk = useAction();
   const toast = useToast();
 
@@ -178,6 +181,13 @@ export function ScheduleBoard({
         hint="לפי המשמרת, המיקום וימי העבודה הקבועים של כל נציג"
       >
         מילוי לפי ברירת מחדל
+      </MenuItem>
+      <MenuItem
+        icon={<LayoutTemplate className="h-4 w-4" />}
+        onClick={() => setTemplates(true)}
+        hint="שמירת השבוע כתבנית, או מילוי השבוע מתבנית שמורה"
+      >
+        תבניות שבוע
       </MenuItem>
       <MenuSeparator />
       <MenuItem
@@ -513,6 +523,17 @@ export function ScheduleBoard({
             ניקוי בחירה
           </Button>
         </div>
+      ) : null}
+
+      {templates ? (
+        <TemplatesDialog
+          teamId={view.team.id}
+          weekStart={view.weekStart}
+          weekLabel={view.label}
+          canSave={Object.values(view.assignments).some((a) => a.kind === "shift")}
+          onApplied={showResult}
+          onClose={() => setTemplates(false)}
+        />
       ) : null}
 
       {sharing ? (

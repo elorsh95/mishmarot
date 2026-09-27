@@ -14,6 +14,12 @@ import {
 } from "@/modules/schedule/service";
 import type { ApplyResult } from "@/modules/schedule/engine";
 import { saveUndo, undoBatch } from "@/modules/schedule/undo";
+import {
+  applyTemplate,
+  deleteTemplate,
+  listTemplates,
+  saveTemplate,
+} from "@/modules/schedule/templates";
 import { createShareLink, getShareLink, revokeShareLink } from "@/modules/sharing/service";
 
 const date = z.string().refine(isIsoDate, "תאריך לא תקין");
@@ -201,5 +207,43 @@ export async function revokeShareLinkAction(teamId: string) {
   return runAction((actor) => revokeShareLink(actor, teamIdSchema.parse(teamId)), {
     revalidate: ["/audit"],
     message: "הקישור בוטל. מי שקיבל אותו כבר לא יוכל לצפות בסידור",
+  });
+}
+
+const idSchema = z.string().min(1);
+
+export async function listTemplatesAction(teamId: string) {
+  return runAction((actor) => listTemplates(actor, idSchema.parse(teamId)), { revalidate: [] });
+}
+
+export async function saveTemplateAction(teamId: string, weekStart: string, name: unknown) {
+  return runAction(
+    (actor) =>
+      saveTemplate(actor, idSchema.parse(teamId), date.parse(weekStart), z.string().parse(name)),
+    { revalidate: ["/audit"], message: "התבנית נשמרה" },
+  );
+}
+
+export async function applyTemplateAction(templateId: string, weekStart: string) {
+  return runAction(
+    async (actor) => {
+      const result = await applyTemplate(actor, idSchema.parse(templateId), date.parse(weekStart));
+      return {
+        summary:
+          result.changed === 0 && result.skipped.length === 0
+            ? "אין מה להוסיף: הימים כבר משובצים או שהתבנית לא מתאימה לשבוע"
+            : summarize(result, "נוספו"),
+        skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
+      };
+    },
+    { revalidate: REVALIDATE },
+  );
+}
+
+export async function deleteTemplateAction(templateId: string) {
+  return runAction((actor) => deleteTemplate(actor, idSchema.parse(templateId)), {
+    revalidate: ["/audit"],
+    message: "התבנית נמחקה",
   });
 }

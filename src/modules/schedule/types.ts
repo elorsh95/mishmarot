@@ -103,3 +103,16 @@ export const QUOTA_STATUS_LABELS: Record<QuotaStatus, string> = {
   approved: "אושר",
   rejected: "נדחה",
 };
+
+/** A saved week the team can apply to other weeks (see templates.ts). */
+export interface WeekTemplateSummary {
+  id: string;
+  teamId: string;
+  name: string;
+  /** Number of shift assignments it holds. */
+  size: number;
+  updatedByName: string;
+  updatedAt: string | null;
+}
+
+export const TEMPLATE_MAX_PER_TEAM = 20;
