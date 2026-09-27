@@ -8,15 +8,31 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
-import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/form";
+import { Checkbox, Field, Select, Textarea } from "@/components/ui/form";
 import { EmptyState } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/toast";
 import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
-import { formatDateTime, formatDateWithDay, formatDayMonth } from "@/lib/dates";
+import {
+  addMonths,
+  formatDateTime,
+  formatDateWithDay,
+  formatDayMonth,
+  formatMonth,
+  monthOf,
+  todayIso,
+} from "@/lib/dates";
 import { APPROVAL_STATUS_LABELS, type ApprovalListItem } from "@/modules/approvals/types";
 import type { Catalog } from "@/modules/catalog/service";
 import { approveManyAction, decideAction } from "./actions";
+
+/** Six months back to six ahead, plus the chosen month if it lies outside that window. */
+function monthOptions(selected: string): string[] {
+  const current = monthOf(todayIso());
+  const months = Array.from({ length: 13 }, (_, i) => addMonths(current, 6 - i));
+  if (selected && !months.includes(selected)) months.push(selected);
+  return months.sort().reverse();
+}
 
 export function ApprovalsView({
   items,
@@ -116,13 +132,19 @@ export function ApprovalsView({
             ))}
           </Select>
         ) : null}
-        <Input
-          type="month"
+        <Select
           aria-label="חודש"
           value={month}
           onChange={(e) => setFilter("month", e.target.value)}
-          className="h-9 w-auto"
-        />
+          className="h-9 w-auto min-w-36"
+        >
+          <option value="">כל החודשים</option>
+          {monthOptions(month).map((m) => (
+            <option key={m} value={m}>
+              {formatMonth(m)}
+            </option>
+          ))}
+        </Select>
         {tab === "pending" && canDecide && items.length > 0 ? (
           <div className="ms-auto flex items-center gap-2">
             <Checkbox
