@@ -22,7 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { NavIcon, NavItem } from "./nav-items";
+import { NAV_GROUP_LABELS, type NavGroup, type NavIcon, type NavItem } from "./nav-items";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
   home: Home,
@@ -53,44 +53,51 @@ export function AppShell({ items, badges, user, logout, children }: ShellProps) 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 
+  const countOf = (item: NavItem) =>
+    item.badge === "approvals"
+      ? badges.approvals.pending
+      : item.badge === "transfers"
+        ? badges.transfers
+        : 0;
+  const waiting = items.some((item) => countOf(item) > 0);
+
+  const link = (item: NavItem) => {
+    const Icon = ICONS[item.icon];
+    const count = countOf(item);
+    const urgent = item.badge === "approvals" && badges.approvals.urgent > 0;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => setOpen(false)}
+        className={cn(
+          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+          isActive(item.href)
+            ? "bg-primary/10 text-primary"
+            : "text-fg-muted hover:bg-muted hover:text-fg",
+        )}
+      >
+        <Icon className="h-4.5 w-4.5 shrink-0" />
+        <span className="flex-1">{item.label}</span>
+        {count > 0 ? <CountBadge count={count} urgent={urgent} /> : null}
+      </Link>
+    );
+  };
+  const groups = (Object.keys(NAV_GROUP_LABELS) as NavGroup[])
+    .map((group) => ({ group, items: items.filter((i) => i.group === group) }))
+    .filter((g) => g.items.length > 0);
   const nav = (
-    <nav className="flex flex-1 flex-col gap-0.5 p-3">
-      {items.map((item) => {
-        const Icon = ICONS[item.icon];
-        const count =
-          item.badge === "approvals"
-            ? badges.approvals.pending
-            : item.badge === "transfers"
-              ? badges.transfers
-              : 0;
-        const urgent = item.badge === "approvals" && badges.approvals.urgent > 0;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setOpen(false)}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              isActive(item.href)
-                ? "bg-primary/10 text-primary"
-                : "text-fg-muted hover:bg-muted hover:text-fg",
-            )}
-          >
-            <Icon className="h-4.5 w-4.5 shrink-0" />
-            <span className="flex-1">{item.label}</span>
-            {count > 0 ? (
-              <span
-                className={cn(
-                  "min-w-5 rounded-full px-1.5 text-center text-xs leading-5 font-semibold text-white",
-                  urgent ? "animate-pulse bg-danger" : "bg-warning",
-                )}
-              >
-                {count}
-              </span>
-            ) : null}
-          </Link>
-        );
-      })}
+    <nav className="flex flex-1 flex-col gap-4 p-3">
+      {groups.map(({ group, items: groupItems }) => (
+        <div key={group} className="flex flex-col gap-0.5">
+          {groups.length > 1 ? (
+            <p className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-fg-subtle">
+              {NAV_GROUP_LABELS[group]}
+            </p>
+          ) : null}
+          {groupItems.map(link)}
+        </div>
+      ))}
     </nav>
   );
 
@@ -143,10 +150,16 @@ export function AppShell({ items, badges, user, logout, children }: ShellProps) 
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="rounded-lg p-2 hover:bg-muted"
-          aria-label="תפריט"
+          className="relative rounded-lg p-2 hover:bg-muted"
+          aria-label={waiting ? "תפריט (יש בקשות ממתינות)" : "תפריט"}
         >
           <Menu className="h-5 w-5" />
+          {waiting ? (
+            <span className="absolute end-1.5 top-1.5 flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-warning" />
+            </span>
+          ) : null}
         </button>
         <span className="font-bold">משמרות</span>
         <span className="w-9" />
@@ -175,5 +188,27 @@ export function AppShell({ items, badges, user, logout, children }: ShellProps) 
 
       <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">{children}</main>
     </div>
+  );
+}
+
+/** A waiting-items count that keeps blinking until they are handled; red when some are overdue. */
+function CountBadge({ count, urgent }: { count: number; urgent: boolean }) {
+  return (
+    <span className="relative inline-flex">
+      <span
+        className={cn(
+          "absolute inset-0 animate-ping rounded-full opacity-60 motion-reduce:hidden",
+          urgent ? "bg-danger" : "bg-warning",
+        )}
+      />
+      <span
+        className={cn(
+          "relative min-w-5 rounded-full px-1.5 text-center text-xs leading-5 font-semibold text-white",
+          urgent ? "bg-danger" : "bg-warning",
+        )}
+      >
+        {count}
+      </span>
+    </span>
   );
 }
