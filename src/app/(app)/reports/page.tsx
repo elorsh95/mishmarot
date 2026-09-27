@@ -9,7 +9,8 @@ import { monthOf, todayIso } from "@/lib/dates";
 import { requireSessionUser } from "@/modules/auth/session";
 import { can } from "@/modules/permissions/check";
 import { monthlyReport } from "@/modules/reports/service";
-import { homeDays } from "@/modules/reports/types";
+import { homeDays, overQuotaDays } from "@/modules/reports/types";
+import { QUOTA_PERIOD_LABELS } from "@/modules/schedule/types";
 import { teamsForActor } from "@/modules/teams/service";
 import { ReportFilters } from "./report-filters";
 
@@ -86,10 +87,11 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
                       </Td>
                     ))}
                     <Td className="text-center">
-                      <Badge tone={homeDays(r) > r.quota ? "warning" : "neutral"}>
-                        <span dir="ltr">
-                          {homeDays(r)}/{r.quota}
-                        </span>
+                      <Badge
+                        tone={overQuotaDays(r) > 0 ? "warning" : "neutral"}
+                        title={`מכסה: ${r.quota} ימים ${QUOTA_PERIOD_LABELS[report.quotaPeriod].per}`}
+                      >
+                        {homeDays(r)}
                       </Badge>
                     </Td>
                     <Td className="text-center text-fg-muted">
@@ -132,7 +134,8 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       </Card>
       <p className="mt-2 text-xs text-fg-muted">
         ימי בית כוללים ימים במסגרת המכסה וימים שאושרו מעבר לה. ימים שממתינים לאישור או שנדחו מוצגים
-        בנפרד.
+        בנפרד. המכסה נספרת {QUOTA_PERIOD_LABELS[report.quotaPeriod].per}; נציג שחרג ממנה החודש מסומן
+        בכתום.
       </p>
     </>
   );

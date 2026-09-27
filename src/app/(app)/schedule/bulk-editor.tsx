@@ -130,7 +130,7 @@ export function BulkEditor({
             </Field>
             {locations.find((l) => l.id === locationId)?.requiresQuota ? (
               <p className="rounded-lg bg-muted px-3 py-2 text-sm text-fg-muted">
-                ימים מעבר למכסה החודשית של כל נציג יישלחו לאישור מנהלת המוקד.
+                ימים מעבר למכסה של כל נציג יישלחו לאישור מנהלת המוקד.
               </p>
             ) : null}
           </>

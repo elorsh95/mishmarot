@@ -40,7 +40,7 @@ export default async function ApprovalsPage({ searchParams }: PageProps<"/approv
     <>
       <PageHeader
         title="בקשות לאישור"
-        description="שיבוצים במיקום הדורש מכסה (למשל עבודה מהבית) מעבר למכסה החודשית של הנציג"
+        description="שיבוצים במיקום הדורש מכסה (למשל עבודה מהבית) מעבר למכסה של הנציג"
       />
       <ApprovalsView
         items={items}

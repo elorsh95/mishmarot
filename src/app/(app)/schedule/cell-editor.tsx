@@ -9,7 +9,7 @@ import { Checkbox, Field, FormError, Input } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
-import { formatDateWithDay, formatMonth, MONTH_NAMES, monthOf } from "@/lib/dates";
+import { formatDateWithDay, formatMonth, monthOf } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
 import { shiftRunsOn, type DayInfo } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
@@ -250,8 +250,9 @@ export function CellEditor({
               >
                 {willNeedApproval ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> : null}
                 <span>
-                  ב{formatMonth(monthOf(date))} {agent.firstName} שובץ/ה ב{selectedLocation.name}{" "}
-                  <strong>{usage.used}</strong> מתוך {usage.quota} ימים.
+                  {usage.period === "week" ? "בשבוע זה" : `ב${formatMonth(monthOf(date))}`}{" "}
+                  {agent.firstName} שובץ/ה ב{selectedLocation.name} <strong>{usage.used}</strong>{" "}
+                  מתוך {usage.quota} ימים.
                   {willNeedApproval ? " שיבוץ זה יישלח לאישור מנהלת המוקד." : ""}
                 </span>
               </div>
@@ -353,10 +354,10 @@ export function ChoiceGroup({
 
 export function QuotaBadge({
   usage,
-  showMonth = false,
+  showLabel = false,
 }: {
   usage: QuotaUsage | undefined;
-  showMonth?: boolean;
+  showLabel?: boolean;
 }) {
   if (!usage) return null;
   const over = usage.used > usage.quota;
@@ -364,12 +365,10 @@ export function QuotaBadge({
   return (
     <Badge
       tone={over ? "danger" : full ? "warning" : "neutral"}
-      title={`ימי בית ב${formatMonth(usage.month)}`}
+      title={usage.period === "week" ? "ימי בית בשבוע זה" : `ימי בית ב${formatMonth(usage.key)}`}
     >
       <Home className="h-3 w-3" />
-      {showMonth ? (
-        <span className="font-normal">{MONTH_NAMES[Number(usage.month.slice(5)) - 1]}</span>
-      ) : null}
+      {showLabel ? <span className="font-normal">{usage.label}</span> : null}
       <span dir="ltr">
         {usage.used}/{usage.quota}
       </span>

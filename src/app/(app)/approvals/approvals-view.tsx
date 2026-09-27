@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/toast";
 import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
-import { formatDateTime, formatDateWithDay, formatDayMonth, formatMonth } from "@/lib/dates";
+import { formatDateTime, formatDateWithDay, formatDayMonth } from "@/lib/dates";
 import { APPROVAL_STATUS_LABELS, type ApprovalListItem } from "@/modules/approvals/types";
 import type { Catalog } from "@/modules/catalog/service";
 import { approveManyAction, decideAction } from "./actions";
@@ -202,12 +202,12 @@ export function ApprovalsView({
                       </span>
                     </p>
                     <p className="text-sm text-fg-muted">
-                      הפעם ה-<strong className="text-fg">{item.position}</strong> ב
-                      {formatMonth(item.month)} (מכסה: {item.quota})
+                      הפעם ה-<strong className="text-fg">{item.position}</strong> {item.periodLabel}{" "}
+                      (מכסה: {item.quota})
                     </p>
-                    {item.monthQuotaDates.length > 0 ? (
+                    {item.quotaDates.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {item.monthQuotaDates.map((d) => (
+                        {item.quotaDates.map((d) => (
                           <span
                             key={d}
                             className={cn(

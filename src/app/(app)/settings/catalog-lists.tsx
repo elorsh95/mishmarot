@@ -90,7 +90,7 @@ export function LocationsCard({ locations }: { locations: WorkLocation[] }) {
   return (
     <ListCard
       title="מיקומי עבודה"
-      description="מהיכן הנציג עובד. ימים במיקום הדורש מכסה נספרים במכסה החודשית של הנציג"
+      description="מהיכן הנציג עובד. ימים במיקום הדורש מכסה נספרים במכסה של הנציג (שבועית או חודשית, לפי ההגדרות)"
       onAdd={() => setEditing("new")}
       items={locations}
       onEdit={setEditing}
@@ -441,7 +441,7 @@ function LocationDialog({
       <NameAndColor values={base} onChange={setBase} errors={fieldErrors} />
       <Field
         label="מכסה"
-        hint="ימי עבודה במיקום זה (למשל מהבית) נספרים במכסה החודשית של הנציג, ומעבר לה נדרש אישור"
+        hint="ימי עבודה במיקום זה (למשל מהבית) נספרים במכסה של הנציג, ומעבר לה נדרש אישור"
       >
         <Checkbox
           label="דורש מכסה"

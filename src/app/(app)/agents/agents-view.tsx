@@ -14,6 +14,7 @@ import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
 import { WEEKDAY_SHORT } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
+import { QUOTA_PERIOD_LABELS, type QuotaPeriod } from "@/modules/schedule/types";
 import type { Catalog } from "@/modules/catalog/service";
 import { deleteAgentAction, saveAgentAction } from "./actions";
 import { ImportAgentsDialog } from "./import-dialog";
@@ -31,6 +32,7 @@ interface Props {
   quotaTeamIds: string[];
   catalog: Catalog;
   defaultQuota: number;
+  quotaPeriod: QuotaPeriod;
   canRequestTransfer: boolean;
 }
 
@@ -41,8 +43,10 @@ export function AgentsView({
   quotaTeamIds,
   catalog,
   defaultQuota,
+  quotaPeriod,
   canRequestTransfer,
 }: Props) {
+  const per = QUOTA_PERIOD_LABELS[quotaPeriod].per;
   const [teamFilter, setTeamFilter] = useState("");
   const [query, setQuery] = useState("");
   const [showInactive, setShowInactive] = useState(false);
@@ -208,7 +212,7 @@ export function AgentsView({
         )}
       </Card>
       <p className="text-xs text-fg-muted">
-        {visible.length} נציגים · מכסת ברירת המחדל לעבודה מהבית: {defaultQuota} ימים בחודש
+        {visible.length} נציגים · מכסת ברירת המחדל לעבודה מהבית: {defaultQuota} ימים {per}
       </p>
 
       {importing ? (
@@ -225,6 +229,7 @@ export function AgentsView({
           canSetQuota={(teamId) => quotaTeamIds.includes(teamId)}
           catalog={catalog}
           defaultQuota={defaultQuota}
+          quotaPeriod={quotaPeriod}
           onClose={() => setEditing(null)}
         />
       ) : null}
@@ -251,6 +256,7 @@ function AgentDialog({
   canSetQuota,
   catalog,
   defaultQuota,
+  quotaPeriod,
   onClose,
 }: {
   agent: Agent | null;
@@ -259,8 +265,10 @@ function AgentDialog({
   canSetQuota: (teamId: string) => boolean;
   catalog: Catalog;
   defaultQuota: number;
+  quotaPeriod: QuotaPeriod;
   onClose: () => void;
 }) {
+  const per = QUOTA_PERIOD_LABELS[quotaPeriod].per;
   const [form, setForm] = useState({
     employeeNumber: agent?.employeeNumber ?? "",
     firstName: agent?.firstName ?? "",
@@ -408,13 +416,13 @@ function AgentDialog({
           {quotaAllowed ? (
             <>
               <Checkbox
-                label={`מכסה אישית (במקום ברירת המחדל: ${defaultQuota} ימים בחודש)`}
+                label={`מכסה אישית (במקום ברירת המחדל: ${defaultQuota} ימים ${per})`}
                 checked={form.customQuota}
                 onChange={(e) => set("customQuota", e.target.checked)}
               />
               {form.customQuota ? (
                 <Field
-                  label="ימים בחודש קלנדרי"
+                  label={quotaPeriod === "week" ? "ימים בשבוע" : "ימים בחודש קלנדרי"}
                   htmlFor="quota"
                   error={fieldErrors.monthlyQuota}
                   className="max-w-40"
@@ -433,8 +441,8 @@ function AgentDialog({
           ) : (
             <p className="text-sm text-fg-muted">
               {agent?.monthlyQuota !== null && agent?.monthlyQuota !== undefined
-                ? `מכסה אישית: ${agent.monthlyQuota} ימים בחודש`
-                : `ברירת מחדל: ${defaultQuota} ימים בחודש`}
+                ? `מכסה אישית: ${agent.monthlyQuota} ימים ${per}`
+                : `ברירת מחדל: ${defaultQuota} ימים ${per}`}
               . שינוי המכסה נעשה ע״י מנהלת המוקד.
             </p>
           )}
