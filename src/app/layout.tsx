@@ -10,6 +10,10 @@ const heebo = Heebo({ subsets: ["hebrew", "latin"], variable: "--font-heebo" });
 export const metadata: Metadata = {
   title: { default: "משמרות", template: "%s · משמרות" },
   description: "ניהול סידור עבודה שבועי למוקד",
+  applicationName: "משמרות",
+  // Installed to the home screen (see manifest.ts); iPhones read these instead of the manifest.
+  appleWebApp: { capable: true, title: "משמרות", statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {
