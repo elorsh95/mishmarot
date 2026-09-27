@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   Eraser,
   FileDown,
   FileSpreadsheet,
@@ -24,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/form";
+import { Menu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/menu";
 import { EmptyState } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/toast";
 import { useAction } from "@/components/ui/use-action";
@@ -272,46 +274,57 @@ export function ScheduleBoard({
         ) : null}
 
         <div className="ms-auto flex flex-wrap items-center gap-2">
-          <a
-            href={`/print/schedule?team=${view.team.id}&week=${view.weekStart}`}
-            target="_blank"
-            rel="noopener"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium hover:bg-muted"
-          >
-            <FileDown className="h-4 w-4" />
-            ייצוא ל-PDF
-          </a>
-          <a
-            href={`/schedule/export?team=${view.team.id}&week=${view.weekStart}`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium hover:bg-muted"
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            ייצוא ל-Excel
-          </a>
-          {teams.length > 1 ? (
-            <a
-              href={`/print/schedule?team=all&week=${view.weekStart}`}
-              target="_blank"
-              rel="noopener"
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-primary hover:bg-muted"
+          <Menu label="ייצוא ושיתוף" icon={<Download className="h-4 w-4" />}>
+            <MenuLabel>צוות {view.team.name}</MenuLabel>
+            <MenuItem
+              icon={<FileDown className="h-4 w-4" />}
+              href={`/print/schedule?team=${view.team.id}&week=${view.weekStart}`}
+              newTab
+              hint="להדפסה או לשמירה כקובץ"
             >
-              PDF לכל הצוותים
-            </a>
-          ) : null}
-          {teams.length > 1 ? (
-            <a
-              href={`/schedule/export?team=all&week=${view.weekStart}`}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-sm font-medium text-primary hover:bg-muted"
+              PDF
+            </MenuItem>
+            <MenuItem
+              icon={<FileSpreadsheet className="h-4 w-4" />}
+              href={`/schedule/export?team=${view.team.id}&week=${view.weekStart}`}
+              hint="קובץ לעריכה ולסינון"
             >
-              Excel לכל הצוותים
-            </a>
-          ) : null}
-          {view.canPublish ? (
-            <Button size="sm" variant="secondary" onClick={() => setSharing(true)}>
-              <Share2 className="h-4 w-4" />
-              שיתוף עם הנציגים
-            </Button>
-          ) : null}
+              Excel
+            </MenuItem>
+            {teams.length > 1 ? (
+              <>
+                <MenuSeparator />
+                <MenuLabel>כל הצוותים</MenuLabel>
+                <MenuItem
+                  icon={<FileDown className="h-4 w-4" />}
+                  href={`/print/schedule?team=all&week=${view.weekStart}`}
+                  newTab
+                  hint="עמוד לכל צוות"
+                >
+                  PDF
+                </MenuItem>
+                <MenuItem
+                  icon={<FileSpreadsheet className="h-4 w-4" />}
+                  href={`/schedule/export?team=all&week=${view.weekStart}`}
+                  hint="גיליון לכל צוות"
+                >
+                  Excel
+                </MenuItem>
+              </>
+            ) : null}
+            {view.canPublish ? (
+              <>
+                <MenuSeparator />
+                <MenuItem
+                  icon={<Share2 className="h-4 w-4" />}
+                  onClick={() => setSharing(true)}
+                  hint="קישור לצפייה בלבד, גם לוואטסאפ"
+                >
+                  שיתוף עם הנציגים
+                </MenuItem>
+              </>
+            ) : null}
+          </Menu>
           {view.canPublish && (!view.isPast || view.canEditLocked) ? (
             view.week.status === "draft" ? (
               <Button
