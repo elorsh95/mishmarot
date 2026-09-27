@@ -2,6 +2,7 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { DomainError } from "@/lib/errors";
+import { logError } from "@/lib/error-report";
 import { requireActor, type SessionUser } from "@/modules/auth/session";
 
 /**
@@ -28,8 +29,10 @@ export async function runAction<T>(
   fn: (actor: SessionUser) => Promise<T>,
   options: { revalidate?: string[]; message?: string } = {},
 ): Promise<ActionResult<T>> {
+  let actorId: string | null = null;
   try {
     const actor = await requireActor();
+    actorId = actor.id;
     const data = await fn(actor);
     for (const path of options.revalidate ?? ["/"]) revalidatePath(path, "layout");
     return { ok: true, data, message: options.message };
@@ -39,7 +42,7 @@ export async function runAction<T>(
       return { ok: false, error: Object.values(fieldErrors)[0] ?? "נתונים לא תקינים", fieldErrors };
     }
     if (err instanceof DomainError) return { ok: false, error: err.message };
-    console.error("Unexpected action error", err);
+    logError(err, { source: "action", userId: actorId });
     return { ok: false, error: "אירעה שגיאה לא צפויה. נסו שוב" };
   }
 }
