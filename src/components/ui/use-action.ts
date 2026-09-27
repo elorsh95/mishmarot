@@ -16,7 +16,11 @@ export function useAction() {
 
   function run<T>(
     action: () => Promise<ActionResult<T>>,
-    opts: { success?: string; onSuccess?: (data: T) => void } = {},
+    opts: {
+      success?: string;
+      onSuccess?: (data: T) => void;
+      onError?: (error: string) => void;
+    } = {},
   ) {
     setError(null);
     setFieldErrors({});
@@ -30,6 +34,7 @@ export function useAction() {
         setError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
         toast.error(result.error);
+        opts.onError?.(result.error);
       }
     });
   }

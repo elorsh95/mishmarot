@@ -1,15 +1,16 @@
 import type { ReactNode } from "react";
-import { CalendarDays } from "lucide-react";
+import { BrandMark } from "@/components/brand";
+import { getBranding } from "@/modules/branding/service";
+import { logoUrl } from "@/modules/branding/types";
 
 /** Centered card used by the public pages (login, set password, forgot password). */
-export function AuthCard({ subtitle, children }: { subtitle: string; children: ReactNode }) {
+export async function AuthCard({ subtitle, children }: { subtitle: string; children: ReactNode }) {
+  const logo = logoUrl(await getBranding());
   return (
     <main className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-white shadow-md">
-            <CalendarDays className="h-6 w-6" />
-          </span>
+          <BrandMark logoUrl={logo} size="lg" />
           <div>
             <h1 className="text-2xl font-bold">משמרות</h1>
             <p className="text-sm text-fg-muted">{subtitle}</p>

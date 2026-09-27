@@ -35,6 +35,28 @@ function styleHeader(row: ExcelJS.Row) {
   });
 }
 
+/** A PNG's pixel size, from its IHDR header. */
+function pngSize(png: Buffer): { width: number; height: number } {
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+}
+
+/**
+ * Puts the company logo at the far (left, in RTL) end of the sheet's first row, `height` px tall.
+ * `lastColumn` is the 1-based last column the sheet uses.
+ */
+function addLogo(wb: ExcelJS.Workbook, ws: ExcelJS.Worksheet, logo: Buffer, lastColumn: number) {
+  const { width, height } = pngSize(logo);
+  const h = 34;
+  const w = Math.min(160, Math.round((width / height) * h));
+  const id = wb.addImage({ buffer: logo as unknown as ExcelJS.Buffer, extension: "png" });
+  ws.getRow(1).height = 30;
+  ws.addImage(id, {
+    tl: { col: Math.max(0, lastColumn - 1) + 0.1, row: 0.1 },
+    ext: { width: w, height: h },
+    editAs: "oneCell",
+  });
+}
+
 /** Excel sheet names: at most 31 characters, none of []:*?/\ and unique in the workbook. */
 function sheetName(name: string, used: Set<string>): string {
   const base = name.replace(/[[\]:*?/\\]/g, " ").slice(0, 28) || "גיליון";
@@ -47,8 +69,8 @@ function sheetName(name: string, used: Set<string>): string {
 type Column<R> = { header: string; width: number; value: (r: R) => string | number };
 
 /**
- * Writes a table sheet: a header row, one row per item and a SUM row for the numeric columns
- * (except those in `noTotal`, and the first `labelColumns` columns).
+ * Writes a table sheet: a title row (with the logo), a header row, one row per item and a SUM row
+ * for the numeric columns (except those in `noTotal`, and the first `labelColumns` columns).
  */
 function tableSheet<R>(
   wb: ExcelJS.Workbook,
@@ -56,34 +78,44 @@ function tableSheet<R>(
   columns: Column<R>[],
   rows: R[],
   {
+    title,
+    logo,
     labelColumns = 1,
     noTotal = [] as string[],
     style,
   }: {
+    /** The first row, above the headers (with the logo, if any). */
+    title: string;
+    logo?: Buffer | null;
     labelColumns?: number;
     noTotal?: string[];
     style?: (row: ExcelJS.Row, item: R) => void;
-  } = {},
+  },
 ) {
   const ws = wb.addWorksheet(name, {
-    views: [{ rightToLeft: true, state: "frozen", ySplit: 1, xSplit: 1 }],
+    views: [{ rightToLeft: true, state: "frozen", ySplit: 2, xSplit: 1 }],
   });
-  ws.columns = columns.map((c) => ({ header: c.header, width: c.width }));
-  styleHeader(ws.getRow(1));
-  ws.getRow(1).height = 32;
+  columns.forEach((c, i) => (ws.getColumn(i + 1).width = c.width));
+  ws.addRow([title]).font = { bold: true, size: 13 };
+  ws.getRow(1).alignment = { vertical: "middle" };
+  if (logo) addLogo(wb, ws, logo, columns.length);
+  const header = ws.addRow(columns.map((c) => c.header));
+  styleHeader(header);
+  header.height = 32;
   for (const item of rows) {
     const row = ws.addRow(columns.map((c) => c.value(item)));
     row.eachCell((c) => (c.border = THIN));
     style?.(row, item);
   }
   if (rows.length > 0) {
-    const last = rows.length + 1;
+    const first = 3;
+    const last = rows.length + 2;
     const totals = ws.addRow(
       columns.map((c, i) => {
         if (i === 0) return "סה״כ";
         if (i < labelColumns || noTotal.includes(c.header)) return "";
         const letter = ws.getColumn(i + 1).letter;
-        return { formula: `SUM(${letter}2:${letter}${last})` };
+        return { formula: `SUM(${letter}${first}:${letter}${last})` };
       }),
     );
     totals.font = { bold: true };
@@ -92,7 +124,7 @@ function tableSheet<R>(
       c.border = THIN;
     });
   }
-  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
+  ws.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: columns.length } };
   return ws;
 }
 
@@ -100,10 +132,15 @@ type AgentRow = Report["rows"][number];
 type ShiftRow = Report["shiftRows"][number];
 
 /** The report as Excel: by agents (one row per agent) or by shifts (plus an absences sheet). */
-export async function reportXlsx(report: Report, view: ReportView): Promise<Buffer> {
+export async function reportXlsx(
+  report: Report,
+  view: ReportView,
+  logo: Buffer | null = null,
+): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const used = new Set<string>();
   const label = reportRangeLabel(report.range);
+  const scope = report.teamName ?? "כל הצוותים";
 
   if (view === "shifts") {
     const weekdays = WEEKDAY_NAMES.map((_, i) => i).filter((i) =>
@@ -136,7 +173,11 @@ export async function reportXlsx(report: Report, view: ReportView): Promise<Buff
       ],
       report.shiftRows,
       // Distinct counts and averages don't add up across shifts.
-      { noTotal: ["נציגים", "ימים", "ממוצע ליום"] },
+      {
+        title: `דוח משמרות - ${scope} - ${label}`,
+        logo,
+        noTotal: ["נציגים", "ימים", "ממוצע ליום"],
+      },
     );
     tableSheet(
       wb,
@@ -147,7 +188,7 @@ export async function reportXlsx(report: Report, view: ReportView): Promise<Buff
         { header: "נציגים", width: 9, value: (r) => r.agents },
       ],
       report.absenceRows,
-      { noTotal: ["נציגים"] },
+      { title: `היעדרויות - ${scope} - ${label}`, logo, noTotal: ["נציגים"] },
     );
     return Buffer.from(await wb.xlsx.writeBuffer());
   }
@@ -180,6 +221,8 @@ export async function reportXlsx(report: Report, view: ReportView): Promise<Buff
   ];
   const homeCol = columns.findIndex((c) => c.header === "ימי בית") + 1;
   tableSheet(wb, sheetName(label, used), columns, report.rows, {
+    title: `דוח נציגים - ${scope} - ${label}`,
+    logo,
     labelColumns: 3,
     noTotal: [columns.find((c) => c.header.startsWith("מכסה"))!.header],
     style: (row, r) => {
@@ -192,7 +235,11 @@ export async function reportXlsx(report: Report, view: ReportView): Promise<Buff
 }
 
 /** Weekly schedule: one sheet per team, agents by days, with the day's coverage below. */
-export async function weekScheduleXlsx(views: WeekView[], catalog: Catalog): Promise<Buffer> {
+export async function weekScheduleXlsx(
+  views: WeekView[],
+  catalog: Catalog,
+  logo: Buffer | null = null,
+): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const used = new Set<string>();
   const shiftOf = (id: string | null) => catalog.shifts.find((s) => s.id === id);
@@ -207,6 +254,8 @@ export async function weekScheduleXlsx(views: WeekView[], catalog: Catalog): Pro
       `סידור עבודה - ${view.team.name} - ${formatWeekRange(view.weekStart)}${view.week.status === "draft" ? " (טיוטה)" : ""}`,
     ]).font = { bold: true, size: 13 };
     ws.mergeCells(1, 1, 1, view.days.length + 2);
+    ws.getRow(1).alignment = { vertical: "middle" };
+    if (logo) addLogo(wb, ws, logo, view.days.length + 2);
 
     const header = ws.addRow([
       "נציג",

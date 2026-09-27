@@ -13,8 +13,10 @@ const key = (agentId: string, date: string) => `${agentId}_${date}`;
 export function SharedSchedule({
   data,
   dayLabels,
+  logoUrl,
 }: {
   data: SharedWeek;
+  logoUrl: string | null;
   dayLabels: Array<{ date: string; title: string }>;
 }) {
   const sheet = useRef<HTMLDivElement>(null);
@@ -52,9 +54,15 @@ export function SharedSchedule({
       </div>
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <div ref={sheet} className="w-max min-w-full bg-white p-3" dir="rtl">
-          <p className="mb-2 text-sm font-bold">
-            סידור עבודה · {data.teamName} · {data.label}
-          </p>
+          <div className="mb-2 flex items-center justify-between gap-4">
+            <p className="text-sm font-bold">
+              סידור עבודה · {data.teamName} · {data.label}
+            </p>
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- captured into the saved image
+              <img src={logoUrl} alt="לוגו" className="h-8 max-w-28 object-contain" />
+            ) : null}
+          </div>
           <table className="border-collapse text-sm">
             <thead>
               <tr>

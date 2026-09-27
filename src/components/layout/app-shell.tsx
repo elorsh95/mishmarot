@@ -21,6 +21,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
+import { BrandMark } from "@/components/brand";
 import { cn } from "@/lib/cn";
 import { NAV_GROUP_LABELS, type NavGroup, type NavIcon, type NavItem } from "./nav-items";
 
@@ -43,10 +44,12 @@ export interface ShellProps {
   badges: { approvals: { pending: number; urgent: number }; transfers: number };
   user: { fullName: string; roleName: string };
   logout: () => Promise<void>;
+  /** The company logo (settings), shown instead of the app mark. */
+  logoUrl: string | null;
   children: ReactNode;
 }
 
-export function AppShell({ items, badges, user, logout, children }: ShellProps) {
+export function AppShell({ items, badges, user, logout, logoUrl, children }: ShellProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -129,10 +132,8 @@ export function AppShell({ items, badges, user, logout, children }: ShellProps) 
 
   const brand = (
     <Link href="/" className="flex items-center gap-2 px-5 py-4" onClick={() => setOpen(false)}>
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white">
-        <CalendarDays className="h-4.5 w-4.5" />
-      </span>
-      <span className="text-lg font-bold">משמרות</span>
+      <BrandMark logoUrl={logoUrl} />
+      <span className={cn("font-bold", logoUrl ? "text-sm text-fg-muted" : "text-lg")}>משמרות</span>
     </Link>
   );
 
@@ -161,7 +162,10 @@ export function AppShell({ items, badges, user, logout, children }: ShellProps) 
             </span>
           ) : null}
         </button>
-        <span className="font-bold">משמרות</span>
+        <Link href="/" className="flex items-center gap-2">
+          {logoUrl ? <BrandMark logoUrl={logoUrl} size="sm" /> : null}
+          <span className="font-bold">משמרות</span>
+        </Link>
         <span className="w-9" />
       </header>
 

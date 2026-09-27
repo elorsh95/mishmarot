@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { todayIso } from "@/lib/dates";
 import { xlsxResponse } from "@/lib/xlsx-response";
+import { getLogo } from "@/modules/branding/service";
 import { getSessionUser } from "@/modules/auth/session";
 import { can } from "@/modules/permissions/check";
 import { reportXlsx } from "@/modules/reports/excel";
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
   const label = reportRangeLabel(range).replaceAll("/", ".");
   const name = `${title} - ${report.teamName ?? "כל הצוותים"} - ${label}.xlsx`;
   return xlsxResponse(
-    await reportXlsx(report, view),
+    await reportXlsx(report, view, (await getLogo())?.bytes ?? null),
     name,
     `report-${view}-${range.from}-${range.to}.xlsx`,
   );

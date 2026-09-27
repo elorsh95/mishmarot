@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { addDays, formatDayMonth, WEEKDAY_NAMES, weekdayOf } from "@/lib/dates";
+import { getBranding } from "@/modules/branding/service";
+import { logoUrl } from "@/modules/branding/types";
 import { getSharedWeek } from "@/modules/sharing/service";
 import { SharedSchedule } from "./shared-schedule";
 
@@ -21,7 +23,11 @@ export default async function SharedSchedulePage({
 }: PageProps<"/s/[token]">) {
   const { token } = await params;
   const { week } = await searchParams;
-  const data = await getSharedWeek(token, typeof week === "string" ? week : undefined);
+  const [data, branding] = await Promise.all([
+    getSharedWeek(token, typeof week === "string" ? week : undefined),
+    getBranding(),
+  ]);
+  const logo = logoUrl(branding);
 
   if (!data) {
     return (
@@ -36,9 +42,15 @@ export default async function SharedSchedulePage({
   return (
     <main className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold sm:text-2xl">סידור עבודה · {data.teamName}</h1>
-          <p className="text-sm text-fg-muted">צפייה בלבד</p>
+        <div className="flex items-center gap-3">
+          {logo ? (
+            // eslint-disable-next-line @next/next/no-img-element -- a small, user-uploaded image
+            <img src={logo} alt="לוגו" className="h-10 max-w-32 object-contain" />
+          ) : null}
+          <div>
+            <h1 className="text-xl font-bold sm:text-2xl">סידור עבודה · {data.teamName}</h1>
+            <p className="text-sm text-fg-muted">צפייה בלבד</p>
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <Link
@@ -62,6 +74,7 @@ export default async function SharedSchedulePage({
       {data.published ? (
         <SharedSchedule
           data={data}
+          logoUrl={logo}
           dayLabels={data.days.map((d) => ({
             date: d,
             title: `${WEEKDAY_NAMES[weekdayOf(d)]} ${formatDayMonth(d)}`,

@@ -11,6 +11,7 @@ import {
   shiftInputSchema,
 } from "@/modules/catalog/service";
 import { clearSpecialDay, setSpecialDay, specialDaySchema } from "@/modules/calendar/service";
+import { removeLogo, setLogo } from "@/modules/branding/service";
 import { settingsSchema, updateSettings } from "@/modules/settings/service";
 
 const REVALIDATE = ["/settings", "/schedule", "/agents", "/approvals", "/"];
@@ -58,5 +59,22 @@ export async function clearSpecialDayAction(date: string) {
   return runAction((actor) => clearSpecialDay(actor, z.string().min(1).parse(date)), {
     revalidate: REVALIDATE,
     message: "היום חזר להגדרת לוח השנה",
+  });
+}
+
+/** Every page shows the logo (menu, login, print, shared schedules): the root layout covers all. */
+const BRANDING_REVALIDATE = ["/"];
+
+export async function setLogoAction(dataUrl: unknown) {
+  return runAction((actor) => setLogo(actor, z.string().max(1_000_000).parse(dataUrl)), {
+    revalidate: BRANDING_REVALIDATE,
+    message: "הלוגו נשמר",
+  });
+}
+
+export async function removeLogoAction() {
+  return runAction((actor) => removeLogo(actor), {
+    revalidate: BRANDING_REVALIDATE,
+    message: "הלוגו הוסר",
   });
 }
