@@ -1,27 +1,47 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 /**
  * A button that opens a small dropdown of actions. Closes on outside click, Escape or choosing
- * an item. The panel opens under the button, aligned to its inline end (right in RTL).
+ * an item. The panel opens under the button, aligned to its inline end by default; `align="start"`
+ * suits a menu at the start of a toolbar (right in RTL).
  */
 export function Menu({
   label,
   icon,
   children,
   className,
+  align = "end",
+  disabled,
 }: {
   label: ReactNode;
   icon?: ReactNode;
   children: ReactNode;
   className?: string;
+  align?: "start" | "end";
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const id = useId();
+
+  // On narrow screens the panel may not fit on its preferred side: nudge it back inside the viewport.
+  useLayoutEffect(() => {
+    const el = panel.current;
+    if (!open || !el) return;
+    el.style.translate = "";
+    const margin = 8;
+    const rect = el.getBoundingClientRect();
+    let shift = 0;
+    if (rect.left < margin) shift = margin - rect.left;
+    else if (rect.right > window.innerWidth - margin)
+      shift = window.innerWidth - margin - rect.right;
+    if (shift) el.style.translate = `${shift}px 0`;
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -46,9 +66,10 @@ export function Menu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={id}
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium hover:bg-muted",
+          "inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium hover:bg-muted disabled:pointer-events-none disabled:opacity-50",
           open && "bg-muted",
         )}
       >
@@ -58,13 +79,17 @@ export function Menu({
       </button>
       {open ? (
         <div
+          ref={panel}
           id={id}
           role="menu"
           onClick={(e) => {
             // Choosing an item (link or button) closes the menu.
             if ((e.target as HTMLElement).closest("[role=menuitem]")) setOpen(false);
           }}
-          className="absolute end-0 top-full z-30 mt-1 min-w-60 rounded-xl border border-border bg-surface p-1.5 shadow-lg"
+          className={cn(
+            "absolute top-full z-30 mt-1 w-max max-w-[calc(100vw-1rem)] min-w-60 rounded-xl border border-border bg-surface p-1.5 shadow-lg",
+            align === "end" ? "end-0" : "start-0",
+          )}
         >
           {children}
         </div>
@@ -89,6 +114,8 @@ export function MenuItem({
   href,
   newTab,
   onClick,
+  disabled,
+  tone = "default",
 }: {
   icon?: ReactNode;
   children: ReactNode;
@@ -96,17 +123,24 @@ export function MenuItem({
   href?: string;
   newTab?: boolean;
   onClick?: () => void;
+  disabled?: boolean;
+  tone?: "default" | "danger";
 }) {
   const body = (
     <>
-      <span className="mt-0.5 text-fg-muted">{icon}</span>
+      <span className={cn("mt-0.5", tone === "danger" ? "text-danger" : "text-fg-muted")}>
+        {icon}
+      </span>
       <span className="flex flex-col text-start">
-        <span className="text-sm font-medium">{children}</span>
+        <span className={cn("text-sm font-medium", tone === "danger" && "text-danger")}>
+          {children}
+        </span>
         {hint ? <span className="text-xs text-fg-muted">{hint}</span> : null}
       </span>
     </>
   );
-  const cls = "flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 hover:bg-muted";
+  const cls =
+    "flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 hover:bg-muted disabled:pointer-events-none disabled:opacity-50";
   // Plain links: menu entries are downloads and print pages, not in-app navigation.
   if (href) {
     return (
@@ -121,7 +155,7 @@ export function MenuItem({
     );
   }
   return (
-    <button role="menuitem" type="button" onClick={onClick} className={cls}>
+    <button role="menuitem" type="button" onClick={onClick} disabled={disabled} className={cls}>
       {body}
     </button>
   );

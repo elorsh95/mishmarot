@@ -1,36 +1,40 @@
 import { col, COLLECTIONS, fromDoc } from "@/lib/firebase/collections";
 import { db } from "@/lib/firebase/admin";
-import type { IsoMonth } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
 import { getCatalog } from "@/modules/catalog/service";
 import { teamScope, type Actor } from "@/modules/permissions/check";
 import type { Assignment } from "@/modules/schedule/types";
 import { getSettings } from "@/modules/settings/service";
 import { listAllTeams } from "@/modules/teams/service";
-import { aggregateMonth } from "./aggregate";
-import type { MonthlyReport } from "./types";
+import { aggregateAgents, aggregateShifts } from "./aggregate";
+import type { ReportRange } from "./period";
+import type { Report } from "./types";
 
 /**
- * Monthly summary per agent for the teams the actor can view (schedule.view).
- * Entries count toward the team they were scheduled in, so an agent who moved teams mid-month
- * appears in each team with that team's days. Active agents with no entries are listed too.
+ * Summary of a date range for the teams the actor can view (schedule.view): per agent and per shift.
+ * Entries count toward the team they were scheduled in, so an agent who moved teams during the
+ * range appears in each team with that team's days. Active agents with no entries are listed too.
  */
-export async function monthlyReport(
+export async function scheduleReport(
   actor: Actor,
-  month: IsoMonth,
+  range: ReportRange,
   teamId: string | null,
-): Promise<MonthlyReport> {
+): Promise<Report> {
   const scope = teamScope(actor, "schedule.view");
   const teams = (await listAllTeams()).filter((t) => scope === "all" || scope.includes(t.id));
   const selected = teamId ? teams.filter((t) => t.id === teamId) : teams;
   const [catalog, settings] = await Promise.all([getCatalog(), getSettings()]);
-  const empty: MonthlyReport = {
-    month,
+  const shifts = catalog.shifts.map((s) => ({ id: s.id, name: s.name }));
+  const absences = catalog.absenceTypes.map((a) => ({ id: a.id, name: a.name }));
+  const empty: Report = {
+    range,
     teamName: teamId ? (selected[0]?.name ?? null) : null,
     quotaPeriod: settings.quotaPeriod,
-    shifts: catalog.shifts.map((s) => ({ id: s.id, name: s.name })),
-    absences: catalog.absenceTypes.map((a) => ({ id: a.id, name: a.name })),
+    shifts,
+    absences,
+    locations: catalog.locations.map((l) => ({ id: l.id, name: l.name })),
     rows: [],
+    ...aggregateShifts(shifts, absences, []),
   };
   if (selected.length === 0) return empty;
 
@@ -39,7 +43,11 @@ export async function monthlyReport(
   const [entrySnaps, agentSnaps] = await Promise.all([
     Promise.all(
       selected.map((t) =>
-        col(COLLECTIONS.assignments).where("teamId", "==", t.id).where("month", "==", month).get(),
+        col(COLLECTIONS.assignments)
+          .where("teamId", "==", t.id)
+          .where("date", ">=", range.from)
+          .where("date", "<=", range.to)
+          .get(),
       ),
     ),
     Promise.all(selected.map((t) => col(COLLECTIONS.agents).where("teamId", "==", t.id).get())),
@@ -68,7 +76,7 @@ export async function monthlyReport(
   }
 
   const quotaLocations = new Set(catalog.locations.filter((l) => l.requiresQuota).map((l) => l.id));
-  const rows = aggregateMonth(
+  const rows = aggregateAgents(
     [...keys.entries()].map(([key, { agent, teamId: t }]) => ({
       agentId: key,
       agentName: agentName(agent),
@@ -86,5 +94,5 @@ export async function monthlyReport(
         a.teamName.localeCompare(b.teamName, "he") || a.agentName.localeCompare(b.agentName, "he"),
     );
 
-  return { ...empty, rows };
+  return { ...empty, rows, ...aggregateShifts(shifts, absences, entries) };
 }

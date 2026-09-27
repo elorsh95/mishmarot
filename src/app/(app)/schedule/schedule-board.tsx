@@ -231,34 +231,37 @@ export function ScheduleBoard({
 
         {editable ? (
           <>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={bulk.pending}
-              onClick={() => runBulk(() => copyPreviousWeekAction(view.team.id, view.weekStart))}
-            >
-              <Copy className="h-4 w-4" />
-              העתקה משבוע קודם
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
+            <Menu
+              label="כלי שיבוץ"
+              icon={<Wand2 className="h-4 w-4" />}
+              align="start"
               disabled={bulk.pending}
-              onClick={() => runBulk(() => fillDefaultsAction(view.team.id, view.weekStart))}
-              title="ממלא ימים ריקים לפי משמרת, מיקום וימי העבודה הקבועים של כל נציג"
             >
-              <Wand2 className="h-4 w-4" />
-              מילוי לפי ברירת מחדל
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={bulk.pending || Object.keys(view.assignments).length === 0}
-              onClick={() => setConfirmClear(true)}
-            >
-              <Eraser className="h-4 w-4" />
-              ניקוי השבוע
-            </Button>
+              <MenuItem
+                icon={<Copy className="h-4 w-4" />}
+                onClick={() => runBulk(() => copyPreviousWeekAction(view.team.id, view.weekStart))}
+                hint="ממלא ימים ריקים לפי השבוע הקודם"
+              >
+                העתקה משבוע קודם
+              </MenuItem>
+              <MenuItem
+                icon={<Wand2 className="h-4 w-4" />}
+                onClick={() => runBulk(() => fillDefaultsAction(view.team.id, view.weekStart))}
+                hint="לפי המשמרת, המיקום וימי העבודה הקבועים של כל נציג"
+              >
+                מילוי לפי ברירת מחדל
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem
+                icon={<Eraser className="h-4 w-4" />}
+                tone="danger"
+                disabled={Object.keys(view.assignments).length === 0}
+                onClick={() => setConfirmClear(true)}
+                hint="מחיקת כל השיבוצים של השבוע"
+              >
+                ניקוי השבוע
+              </MenuItem>
+            </Menu>
             {mode === "agents" ? (
               <Button
                 variant={selecting ? "primary" : "secondary"}

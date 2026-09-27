@@ -1,21 +1,24 @@
+import { weekdayOf } from "@/lib/dates";
 import type { Assignment } from "@/modules/schedule/types";
-import type { AgentMonthRow } from "./types";
+import type { AbsenceReportRow, AgentReportRow, ShiftReportRow } from "./types";
 
 type AgentInfo = Pick<
-  AgentMonthRow,
+  AgentReportRow,
   "agentId" | "agentName" | "employeeNumber" | "teamName" | "isActive" | "quota"
 >;
 
-/** Sums a month of entries per agent. Pure, so it is unit-tested directly. */
-export function aggregateMonth(
+type Entry = Pick<
+  Assignment,
+  "agentId" | "date" | "kind" | "shiftId" | "locationId" | "absenceTypeId" | "quotaStatus"
+>;
+
+/** Sums the range's entries per agent. Pure, so it is unit-tested directly. */
+export function aggregateAgents(
   agents: AgentInfo[],
-  entries: Pick<
-    Assignment,
-    "agentId" | "kind" | "shiftId" | "locationId" | "absenceTypeId" | "quotaStatus"
-  >[],
+  entries: Omit<Entry, "date">[],
   quotaLocationIds: Set<string>,
-): AgentMonthRow[] {
-  const rows = new Map<string, AgentMonthRow>(
+): AgentReportRow[] {
+  const rows = new Map<string, AgentReportRow>(
     agents.map((a) => [
       a.agentId,
       {
@@ -47,4 +50,66 @@ export function aggregateMonth(
     }
   }
   return [...rows.values()];
+}
+
+/**
+ * Sums the range's entries per shift and per absence type, in catalog order.
+ * Shifts and absence types with no entries are listed with zeros.
+ */
+export function aggregateShifts(
+  shifts: Array<{ id: string; name: string }>,
+  absences: Array<{ id: string; name: string }>,
+  entries: Entry[],
+): { shiftRows: ShiftReportRow[]; absenceRows: AbsenceReportRow[] } {
+  const shiftRows = new Map<string, ShiftReportRow>(
+    shifts.map((s) => [
+      s.id,
+      {
+        shiftId: s.id,
+        name: s.name,
+        total: 0,
+        agents: 0,
+        days: 0,
+        byLocation: {},
+        byWeekday: [0, 0, 0, 0, 0, 0, 0],
+        pending: 0,
+        rejected: 0,
+      },
+    ]),
+  );
+  const absenceRows = new Map<string, AbsenceReportRow>(
+    absences.map((a) => [a.id, { absenceTypeId: a.id, name: a.name, days: 0, agents: 0 }]),
+  );
+  const agentsOf = new Map<string, Set<string>>();
+  const datesOf = new Map<string, Set<string>>();
+  const add = (map: Map<string, Set<string>>, key: string, value: string) => {
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key)!.add(value);
+  };
+
+  for (const e of entries) {
+    if (e.kind === "absence") {
+      const row = e.absenceTypeId ? absenceRows.get(e.absenceTypeId) : undefined;
+      if (!row) continue;
+      row.days += 1;
+      add(agentsOf, `a|${row.absenceTypeId}`, e.agentId);
+      continue;
+    }
+    const row = e.shiftId ? shiftRows.get(e.shiftId) : undefined;
+    if (!row) continue;
+    row.total += 1;
+    row.byWeekday[weekdayOf(e.date)] += 1;
+    if (e.locationId) row.byLocation[e.locationId] = (row.byLocation[e.locationId] ?? 0) + 1;
+    if (e.quotaStatus === "pending") row.pending += 1;
+    else if (e.quotaStatus === "rejected") row.rejected += 1;
+    add(agentsOf, `s|${row.shiftId}`, e.agentId);
+    add(datesOf, row.shiftId, e.date);
+  }
+  for (const row of shiftRows.values()) {
+    row.agents = agentsOf.get(`s|${row.shiftId}`)?.size ?? 0;
+    row.days = datesOf.get(row.shiftId)?.size ?? 0;
+  }
+  for (const row of absenceRows.values())
+    row.agents = agentsOf.get(`a|${row.absenceTypeId}`)?.size ?? 0;
+  return { shiftRows: [...shiftRows.values()], absenceRows: [...absenceRows.values()] };
 }

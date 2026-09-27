@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { getCatalog } from "@/modules/catalog/service";
 import { getWeekView, setDayEntry } from "@/modules/schedule/service";
 import { actors, baseData, clearEmulator, createAgentDoc, createTeamDoc } from "@/test/helpers";
-import { monthlyReportXlsx, weekScheduleXlsx } from "./excel";
-import { monthlyReport } from "./service";
+import { reportXlsx, weekScheduleXlsx } from "./excel";
+import { presetRange } from "./period";
+import { scheduleReport } from "./service";
 import { homeDays } from "./types";
 
 let base: Awaited<ReturnType<typeof baseData>>;
+const march = presetRange("month", "2030-03-01");
 
 beforeEach(async () => {
   await clearEmulator();
@@ -32,7 +34,7 @@ async function readBook(buffer: Buffer) {
   return wb;
 }
 
-describe("monthly report", () => {
+describe("schedule report", () => {
   beforeEach(async () => {
     const admin = actors.admin();
     // March 2030: a1 works 3 home days (third needs approval), one office day, one vacation day.
@@ -50,7 +52,7 @@ describe("monthly report", () => {
 
   it("sums each agent's month within the actor's teams", async () => {
     const tm = actors.teamManager(["renault"]);
-    const report = await monthlyReport(tm, "2030-03", null);
+    const report = await scheduleReport(tm, march, null);
     expect(report.rows.map((r) => r.agentName)).toEqual(["דנה לוי", "יוסי כהן"]);
     const dana = report.rows[0];
     expect(dana).toMatchObject({ workDays: 4, absenceDays: 1, quota: 2 });
@@ -61,14 +63,14 @@ describe("monthly report", () => {
     expect(report.rows[1]).toMatchObject({ workDays: 0, absenceDays: 0 });
 
     // A team outside the manager's scope yields nothing
-    expect((await monthlyReport(tm, "2030-03", "nissan")).rows).toEqual([]);
-    const all = await monthlyReport(actors.admin(), "2030-03", null);
+    expect((await scheduleReport(tm, march, "nissan")).rows).toEqual([]);
+    const all = await scheduleReport(actors.admin(), march, null);
     expect(all.rows).toHaveLength(3);
   });
 
   it("exports the report to Excel with a totals row", async () => {
-    const report = await monthlyReport(actors.admin(), "2030-03", "renault");
-    const ws = (await readBook(await monthlyReportXlsx(report))).worksheets[0];
+    const report = await scheduleReport(actors.admin(), march, "renault");
+    const ws = (await readBook(await reportXlsx(report, "agents"))).worksheets[0];
     const headers = (ws.getRow(1).values as string[]).slice(1);
     expect(headers.slice(0, 4)).toEqual(["נציג", "מספר עובד", "צוות", "ימי עבודה"]);
     expect(headers).toContain("ימי בית");
@@ -77,6 +79,41 @@ describe("monthly report", () => {
     expect(ws.getRow(2).getCell(4).value).toBe(4);
     expect(ws.getRow(4).getCell(1).value).toBe("סה״כ");
     expect(ws.getRow(4).getCell(4).value).toMatchObject({ formula: "SUM(D2:D3)" });
+  });
+
+  it("limits the report to any date range", async () => {
+    const admin = actors.admin();
+    const day = await scheduleReport(admin, presetRange("day", "2030-03-04"), "renault");
+    expect(day.rows[0]).toMatchObject({ agentName: "דנה לוי", workDays: 1 });
+    const range = await scheduleReport(
+      admin,
+      { period: "range", from: "2030-03-05", to: "2030-04-01" },
+      "renault",
+    );
+    // 5.3 home (pending), 6.3 office, 7.3 vacation, 1.4 office
+    expect(range.rows[0]).toMatchObject({ workDays: 3, absenceDays: 1 });
+    const quarter = await scheduleReport(admin, presetRange("quarter", "2030-04-10"), "renault");
+    expect(quarter.range).toMatchObject({ from: "2030-02-01", to: "2030-04-30" });
+    expect(quarter.rows[0]).toMatchObject({ workDays: 5, absenceDays: 1 });
+  });
+
+  it("sums shifts and absences, and exports them by shifts", async () => {
+    const report = await scheduleReport(actors.admin(), march, "renault");
+    const morning = report.shiftRows.find((r) => r.shiftId === base.morning.id)!;
+    expect(morning).toMatchObject({ total: 4, agents: 1, days: 4, pending: 1 });
+    expect(morning.byLocation).toEqual({ [base.home.id]: 3, [base.office.id]: 1 });
+    expect(report.absenceRows.find((r) => r.absenceTypeId === base.vacation.id)).toMatchObject({
+      days: 1,
+      agents: 1,
+    });
+
+    const wb = await readBook(await reportXlsx(report, "shifts"));
+    expect(wb.worksheets).toHaveLength(2);
+    const ws = wb.worksheets[0];
+    const headers = (ws.getRow(1).values as string[]).slice(1);
+    expect(headers.slice(0, 5)).toEqual(["משמרת", "שיבוצים", "נציגים", "ימים", "ממוצע ליום"]);
+    const row = report.shiftRows.findIndex((r) => r.shiftId === base.morning.id) + 2;
+    expect(ws.getRow(row).getCell(2).value).toBe(4);
   });
 });
 
