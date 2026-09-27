@@ -44,7 +44,11 @@ export function CellEditor({
   readOnly: boolean;
   onClose: () => void;
   /** Called after an absence range was saved, with the summary and any skipped days. */
-  onRangeResult: (result: { summary: string; skipped: SkippedOp[] }) => void;
+  onRangeResult: (result: {
+    summary: string;
+    skipped: SkippedOp[];
+    undoToken?: string | null;
+  }) => void;
 }) {
   const { agent, date, entry } = target;
   const closed = day?.kind === "closed";

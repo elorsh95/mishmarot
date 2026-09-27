@@ -51,6 +51,7 @@ import {
   copyPreviousWeekAction,
   fillDefaultsAction,
   setWeekStatusAction,
+  undoAction,
 } from "./actions";
 import { BulkEditor } from "./bulk-editor";
 import { CellEditor, QuotaBadge, QuotaSummaryBadge, type EditTarget } from "./cell-editor";
@@ -135,8 +136,19 @@ export function ScheduleBoard({
     setEditing({ agent, date, entry });
   }
 
-  function showResult(data: { summary: string; skipped: SkippedOp[] }) {
-    toast.success(data.summary);
+  function showResult(data: { summary: string; skipped: SkippedOp[]; undoToken?: string | null }) {
+    const token = data.undoToken;
+    toast.success(
+      data.summary,
+      token
+        ? {
+            action: {
+              label: "ביטול",
+              onClick: () => bulk.run(() => undoAction(token), { onSuccess: showResult }),
+            },
+          }
+        : undefined,
+    );
     if (data.skipped.length > 0) setSkipped(data.skipped);
   }
 

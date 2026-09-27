@@ -16,7 +16,9 @@ import {
   assignmentId,
   QUOTA_STATUS_LABELS,
   weekId,
+  entryOf,
   type Assignment,
+  type CellChange,
   type ChangeOp,
   type EntryInput,
   type QuotaStatus,
@@ -46,6 +48,12 @@ export interface ApplyResult {
   changed: number;
   skipped: SkippedOp[];
   pendingApprovalIds: string[];
+  /** Every cell that was changed, with its previous content (used to undo a bulk action). */
+  changes: CellChange[];
+}
+
+export function noChanges(): ApplyResult {
+  return { changed: 0, skipped: [], pendingApprovalIds: [], changes: [] };
 }
 
 /** Agents per transaction, keeping each transaction well under Firestore's 500-write limit. */
@@ -66,7 +74,7 @@ export async function applyChanges(
   }
 
   const agentIds = [...byAgent.keys()];
-  const total: ApplyResult = { changed: 0, skipped: [], pendingApprovalIds: [] };
+  const total = noChanges();
   for (let i = 0; i < agentIds.length; i += AGENTS_PER_TX) {
     const group = agentIds.slice(i, i + AGENTS_PER_TX);
     const groupOps = group.flatMap((id) => byAgent.get(id) ?? []);
@@ -76,6 +84,7 @@ export async function applyChanges(
     total.changed += result.changed;
     total.skipped.push(...result.skipped);
     total.pendingApprovalIds.push(...result.pendingApprovalIds);
+    total.changes.push(...result.changes);
   }
   if (total.pendingApprovalIds.length > 0) {
     emit("approval.requested", { approvalIds: total.pendingApprovalIds });
@@ -101,7 +110,7 @@ async function applyInTx(
   today: IsoDate,
   mode: ApplyOptions["mode"],
 ): Promise<ApplyResult> {
-  const result: ApplyResult = { changed: 0, skipped: [], pendingApprovalIds: [] };
+  const result = noChanges();
 
   // ---------- reads (all before any write) ----------
   const settings = await getSettingsInTx(tx);
@@ -251,6 +260,7 @@ async function applyInTx(
           before: old,
         });
         result.changed += 1;
+        result.changes.push({ agentId, date: old!.date, before: entryOf(old!), after: null });
         continue;
       }
 
@@ -294,6 +304,12 @@ async function applyInTx(
       writeAssignment(tx, ref, finalDoc, !old);
       if (isTarget) {
         result.changed += 1;
+        result.changes.push({
+          agentId,
+          date: draft.date,
+          before: old ? entryOf(old) : null,
+          after: entryOf(draft),
+        });
         const statusNote = status === "pending" ? ` – ${QUOTA_STATUS_LABELS.pending}` : "";
         auditInTx(tx, actor, {
           action: old ? "assignment.update" : "assignment.create",

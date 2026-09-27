@@ -54,6 +54,28 @@ export interface ChangeOp {
   entry: EntryInput | null;
 }
 
+/** One cell an applyChanges call changed: what it held before and holds now (null = empty). */
+export interface CellChange {
+  agentId: string;
+  date: IsoDate;
+  before: EntryInput | null;
+  after: EntryInput | null;
+}
+
+/** The entry an assignment holds, in the form applyChanges takes. */
+export function entryOf(
+  a: Pick<Assignment, "kind" | "shiftId" | "locationId" | "absenceTypeId" | "note">,
+): EntryInput {
+  return a.kind === "shift"
+    ? {
+        kind: "shift",
+        shiftId: a.shiftId ?? "",
+        locationId: a.locationId ?? "",
+        note: a.note ?? "",
+      }
+    : { kind: "absence", absenceTypeId: a.absenceTypeId ?? "", note: a.note ?? "" };
+}
+
 export type WeekStatus = "draft" | "published";
 
 export interface WeekSchedule {

@@ -13,6 +13,7 @@ import {
   setWeekStatus,
 } from "@/modules/schedule/service";
 import type { ApplyResult } from "@/modules/schedule/engine";
+import { saveUndo, undoBatch } from "@/modules/schedule/undo";
 import { createShareLink, getShareLink, revokeShareLink } from "@/modules/sharing/service";
 
 const date = z.string().refine(isIsoDate, "תאריך לא תקין");
@@ -77,6 +78,7 @@ export async function copyPreviousWeekAction(teamId: string, weekStart: string) 
             ? "אין מה להעתיק: השבוע הקודם ריק או שהימים כבר משובצים"
             : summarize(result, "הועתקו"),
         skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
       };
     },
     { revalidate: REVALIDATE },
@@ -93,6 +95,7 @@ export async function fillDefaultsAction(teamId: string, weekStart: string) {
             ? "לא נמצאו ימים ריקים לנציגים עם ברירת מחדל"
             : summarize(result, "נוספו"),
         skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
       };
     },
     { revalidate: REVALIDATE },
@@ -103,7 +106,11 @@ export async function clearWeekAction(teamId: string, weekStart: string) {
   return runAction(
     async (actor) => {
       const result = await clearWeek(actor, teamId, date.parse(weekStart));
-      return { summary: summarize(result, "הוסרו"), skipped: result.skipped };
+      return {
+        summary: summarize(result, "הוסרו"),
+        skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
+      };
     },
     { revalidate: REVALIDATE },
   );
@@ -138,6 +145,21 @@ export async function setAbsenceRangeAction(
             ? "לא נמצאו ימים לעדכון בטווח"
             : summarize(result, "עודכנו"),
         skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
+      };
+    },
+    { revalidate: REVALIDATE },
+  );
+}
+
+export async function undoAction(token: unknown) {
+  return runAction(
+    async (actor) => {
+      const result = await undoBatch(actor, z.string().min(1).parse(token));
+      return {
+        summary: summarize(result, "שוחזרו"),
+        skipped: result.skipped,
+        undoToken: null,
       };
     },
     { revalidate: REVALIDATE },
@@ -156,6 +178,7 @@ export async function setEntriesAction(cells: unknown, entry: unknown) {
       return {
         summary: summarize(result, parsed ? "עודכנו" : "הוסרו"),
         skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
       };
     },
     { revalidate: REVALIDATE },
