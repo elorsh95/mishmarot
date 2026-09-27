@@ -124,6 +124,8 @@ function TeamDialog({
   const [managerIds, setManagerIds] = useState<string[]>(team?.managerIds ?? []);
   const [sortOrder, setSortOrder] = useState(String(team?.sortOrder ?? nextSortOrder));
   const [isActive, setIsActive] = useState(team?.isActive ?? true);
+  const [minMorning, setMinMorning] = useState(String(team?.minMorning ?? 0));
+  const [minEvening, setMinEvening] = useState(String(team?.minEvening ?? 0));
   const { run, pending, error, fieldErrors } = useAction();
 
   const knownIds = new Set(users.map((u) => u.id));
@@ -141,6 +143,8 @@ function TeamDialog({
           managerIds,
           sortOrder: Number(sortOrder) || 0,
           isActive,
+          minMorning: minMorning === "" ? 0 : minMorning,
+          minEvening: minEvening === "" ? 0 : minEvening,
         }),
       { onSuccess: onClose },
     );
@@ -191,6 +195,38 @@ function TeamDialog({
               לצוות משויכים גם {hiddenManagers.length} מנהלים שאינם פעילים
             </p>
           ) : null}
+        </Field>
+        <Field
+          label="מינימום נציגים ביום"
+          hint="כמה נציגים צריך בכל יום עבודה. יום עם פחות מזה מסומן במסך הראשי ובסידור. 0 = התראה רק כשאין אף נציג."
+          error={fieldErrors.minMorning ?? fieldErrors.minEvening}
+        >
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              בוקר
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={99}
+                value={minMorning}
+                onChange={(e) => setMinMorning(e.target.value)}
+                className="w-20"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              ערב
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={99}
+                value={minEvening}
+                onChange={(e) => setMinEvening(e.target.value)}
+                className="w-20"
+              />
+            </label>
+          </div>
         </Field>
         <Field label="סדר תצוגה" htmlFor="team-sort" error={fieldErrors.sortOrder}>
           <Input

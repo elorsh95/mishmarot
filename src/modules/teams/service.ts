@@ -14,17 +14,26 @@ export interface Team {
   isActive: boolean;
   managerIds: string[];
   sortOrder: number;
+  /** Agents needed on the morning / evening each work day. 0 = only warn when nobody is on. */
+  minMorning: number;
+  minEvening: number;
+}
+
+/** Teams saved before the staffing minimums existed have none. */
+function withDefaults(team: Team): Team {
+  return { ...team, minMorning: team.minMorning ?? 0, minEvening: team.minEvening ?? 0 };
 }
 
 export const listAllTeams = cache(async (): Promise<Team[]> => {
   const snap = await col(COLLECTIONS.teams).get();
   return snap.docs
-    .map((d) => fromDoc<Team>(d))
+    .map((d) => withDefaults(fromDoc<Team>(d)))
     .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "he"));
 });
 
 export async function getTeam(id: string): Promise<Team | null> {
-  return fromDocOrNull<Team>(await col(COLLECTIONS.teams).doc(id).get());
+  const team = fromDocOrNull<Team>(await col(COLLECTIONS.teams).doc(id).get());
+  return team ? withDefaults(team) : null;
 }
 
 /** Active teams the actor can access for a permission. */
@@ -48,6 +57,8 @@ export const teamInputSchema = z.object({
   isActive: z.boolean().default(true),
   managerIds: z.array(z.string()).default([]),
   sortOrder: z.coerce.number().int().default(0),
+  minMorning: z.coerce.number().int().min(0, "לא יכול להיות שלילי").max(99).default(0),
+  minEvening: z.coerce.number().int().min(0, "לא יכול להיות שלילי").max(99).default(0),
 });
 export type TeamInput = z.infer<typeof teamInputSchema>;
 

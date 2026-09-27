@@ -40,7 +40,7 @@ import {
   weekdayOf,
 } from "@/lib/dates";
 import { agentName, type Agent } from "@/modules/agents/types";
-import { shiftRunsOn, shiftWeekday, type DayInfo } from "@/modules/calendar/types";
+import { shiftRunsOn, type DayInfo } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
 import type { SkippedOp } from "@/modules/schedule/engine";
 import type { WeekView } from "@/modules/schedule/service";
@@ -777,6 +777,32 @@ function coverageFor(view: WeekView, catalog: Catalog, date: string) {
   return { morning, evening, absent };
 }
 
+/**
+ * Whether a day falls short of the team's minimum (at least one) on the morning / evening.
+ * Days nobody works (closed, no shift runs) and teams without active agents are never short.
+ */
+function shortfall(view: WeekView, catalog: Catalog, date: string) {
+  const c = coverageFor(view, catalog, date);
+  const running = catalog.shifts.filter(
+    (s) => s.isActive && shiftRunsOn(s, date, view.dayInfo[date]),
+  );
+  const counts = running.length > 0 && view.agents.some((a) => a.isActive && a.inTeam);
+  return {
+    ...c,
+    eveningExpected: running.some((s) => s.coversEvening),
+    shortMorning: counts && c.morning < Math.max(1, view.team.minMorning),
+    shortEvening:
+      counts &&
+      running.some((s) => s.coversEvening) &&
+      c.evening < Math.max(1, view.team.minEvening),
+  };
+}
+
+/** "3" or, with a minimum set, "3/5". */
+function countLabel(count: number, min: number) {
+  return min > 0 ? `${count}/${min}` : String(count);
+}
+
 function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog }) {
   return (
     <tr className="bg-muted/60">
@@ -784,7 +810,7 @@ function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog })
         סה״כ ביום
       </th>
       {view.days.map((date) => {
-        const c = coverageFor(view, catalog, date);
+        const c = shortfall(view, catalog, date);
         if (view.dayInfo[date]?.kind === "closed" && c.morning + c.evening + c.absent === 0) {
           return (
             <td key={date} className="px-2 py-2 text-center text-xs text-fg-muted">
@@ -793,13 +819,25 @@ function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog })
           );
         }
         return (
-          <td key={date} className="px-2 py-2 text-center text-xs text-fg-muted">
-            <div>
-              בוקר: <strong className="text-fg">{c.morning}</strong>
+          <td
+            key={date}
+            className={cn(
+              "px-2 py-2 text-center text-xs text-fg-muted",
+              (c.shortMorning || c.shortEvening) && "bg-danger/10",
+            )}
+          >
+            <div className={cn(c.shortMorning && "font-semibold text-danger")}>
+              בוקר:{" "}
+              <strong className={c.shortMorning ? "text-danger" : "text-fg"}>
+                {countLabel(c.morning, view.team.minMorning)}
+              </strong>
             </div>
-            {shiftWeekday(date, view.dayInfo[date]) !== 5 ? (
-              <div>
-                ערב: <strong className="text-fg">{c.evening}</strong>
+            {c.eveningExpected ? (
+              <div className={cn(c.shortEvening && "font-semibold text-danger")}>
+                ערב:{" "}
+                <strong className={c.shortEvening ? "text-danger" : "text-fg"}>
+                  {countLabel(c.evening, view.team.minEvening)}
+                </strong>
               </div>
             ) : null}
             {c.absent > 0 ? <div>נעדרים: {c.absent}</div> : null}
@@ -814,7 +852,7 @@ function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog })
 function DayList({ view, catalog, editable, entryOf, usageOf, onCell, selection }: GridProps) {
   const initial = view.days.includes(view.today) ? view.today : view.days[0];
   const [day, setDay] = useState(initial);
-  const c = coverageFor(view, catalog, day);
+  const c = shortfall(view, catalog, day);
   return (
     <div className="space-y-3 md:hidden">
       <div className="sticky top-13 z-20 -mx-4 flex gap-1.5 overflow-x-auto bg-bg/95 px-4 py-2 backdrop-blur">
@@ -853,9 +891,19 @@ function DayList({ view, catalog, editable, entryOf, usageOf, onCell, selection 
         </Button>
       ) : null}
       <p className="text-xs text-fg-muted">
-        בוקר: {c.morning}
-        {shiftWeekday(day, view.dayInfo[day]) !== 5 ? ` · ערב: ${c.evening}` : ""}
+        <span className={cn(c.shortMorning && "font-semibold text-danger")}>
+          בוקר: {countLabel(c.morning, view.team.minMorning)}
+        </span>
+        {c.eveningExpected ? (
+          <span className={cn(c.shortEvening && "font-semibold text-danger")}>
+            {" "}
+            · ערב: {countLabel(c.evening, view.team.minEvening)}
+          </span>
+        ) : null}
         {c.absent ? ` · נעדרים: ${c.absent}` : ""}
+        {c.shortMorning || c.shortEvening ? (
+          <span className="font-semibold text-danger"> · חסרים נציגים</span>
+        ) : null}
       </p>
       <Card className="divide-y divide-border">
         {view.agents.map((agent) => {

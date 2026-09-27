@@ -52,11 +52,7 @@ export default async function DashboardPage() {
       })),
     ),
     listUpcomingRejected(user, today),
-    weekCoverage(
-      user,
-      teams.map((t) => t.id),
-      thisWeek,
-    ),
+    weekCoverage(user, teams, thisWeek),
   ]);
   const gapDays = Object.values(coverage).reduce((n, c) => n + c.gaps, 0);
 
@@ -102,9 +98,9 @@ export default async function DashboardPage() {
           <StatCard
             href="#teams"
             icon={<CalendarX2 className="h-5 w-5" />}
-            label="ימים בלי כיסוי השבוע"
+            label="ימים עם חוסר בנציגים השבוע"
             value={gapDays}
-            alert="אין אף נציג בבוקר או בערב"
+            alert="פחות מהמינימום בבוקר או בערב"
           />
         ) : null}
       </div>
@@ -205,7 +201,7 @@ function TeamCard({
   thisWeek,
   nextWeek,
 }: {
-  team: { id: string; name: string };
+  team: { id: string; name: string; minMorning: number; minEvening: number };
   published: boolean;
   nextPublished: boolean;
   summary: WeekSummary;
@@ -218,7 +214,14 @@ function TeamCard({
     <Card className="overflow-hidden transition hover:border-primary/40 hover:shadow">
       <Link href={href(thisWeek)} className="block p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <span className="font-semibold">{team.name}</span>
+          <span className="min-w-0">
+            <span className="font-semibold">{team.name}</span>
+            {team.minMorning || team.minEvening ? (
+              <span className="ms-2 text-xs text-fg-muted">
+                מינימום {team.minMorning} / {team.minEvening}
+              </span>
+            ) : null}
+          </span>
           <span className="flex items-center gap-1 text-xs text-fg-muted">
             <Badge tone={published ? "success" : "neutral"}>{published ? "פורסם" : "טיוטה"}</Badge>
             <ChevronLeft className="h-4 w-4" />
@@ -263,7 +266,7 @@ function TeamCard({
           {summary.gaps > 0 ? (
             <span className="flex items-center gap-1 font-medium text-danger">
               <CalendarX2 className="h-3.5 w-3.5" />
-              {summary.gaps === 1 ? "יום אחד בלי כיסוי" : `${summary.gaps} ימים בלי כיסוי`}
+              {summary.gaps === 1 ? "יום אחד עם חוסר" : `${summary.gaps} ימים עם חוסר`}
             </span>
           ) : null}
           {summary.unassigned > 0 ? (
