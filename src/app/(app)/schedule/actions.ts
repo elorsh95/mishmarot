@@ -13,6 +13,7 @@ import {
   setWeekStatus,
 } from "@/modules/schedule/service";
 import type { ApplyResult } from "@/modules/schedule/engine";
+import { createShareLink, getShareLink, revokeShareLink } from "@/modules/sharing/service";
 
 const date = z.string().refine(isIsoDate, "תאריך לא תקין");
 
@@ -159,4 +160,23 @@ export async function setEntriesAction(cells: unknown, entry: unknown) {
     },
     { revalidate: REVALIDATE },
   );
+}
+
+const teamIdSchema = z.string().min(1);
+
+export async function getShareLinkAction(teamId: string) {
+  return runAction((actor) => getShareLink(actor, teamIdSchema.parse(teamId)), { revalidate: [] });
+}
+
+export async function createShareLinkAction(teamId: string) {
+  return runAction((actor) => createShareLink(actor, teamIdSchema.parse(teamId)), {
+    revalidate: ["/audit"],
+  });
+}
+
+export async function revokeShareLinkAction(teamId: string) {
+  return runAction((actor) => revokeShareLink(actor, teamIdSchema.parse(teamId)), {
+    revalidate: ["/audit"],
+    message: "הקישור בוטל. מי שקיבל אותו כבר לא יוכל לצפות בסידור",
+  });
 }

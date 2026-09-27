@@ -14,6 +14,7 @@ import {
   Lock,
   Plus,
   Send,
+  Share2,
   Undo2,
   Wand2,
   X,
@@ -52,6 +53,7 @@ import {
 import { BulkEditor } from "./bulk-editor";
 import { CellEditor, QuotaBadge, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
+import { ShareDialog } from "./share-dialog";
 
 type ViewMode = "agents" | "coverage";
 
@@ -74,6 +76,7 @@ export function ScheduleBoard({
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkEditing, setBulkEditing] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const bulk = useAction();
   const toast = useToast();
 
@@ -303,6 +306,12 @@ export function ScheduleBoard({
               Excel לכל הצוותים
             </a>
           ) : null}
+          {view.canPublish ? (
+            <Button size="sm" variant="secondary" onClick={() => setSharing(true)}>
+              <Share2 className="h-4 w-4" />
+              שיתוף עם הנציגים
+            </Button>
+          ) : null}
           {view.canPublish && (!view.isPast || view.canEditLocked) ? (
             view.week.status === "draft" ? (
               <Button
@@ -429,6 +438,14 @@ export function ScheduleBoard({
             ניקוי בחירה
           </Button>
         </div>
+      ) : null}
+
+      {sharing ? (
+        <ShareDialog
+          teamId={view.team.id}
+          teamName={view.team.name}
+          onClose={() => setSharing(false)}
+        />
       ) : null}
 
       {bulkEditing ? (
