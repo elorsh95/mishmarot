@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/action"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/action", "/client-error"];
 /** Read-only schedule links shared with agents (see modules/sharing), and the company logo. */
 const PUBLIC_PREFIXES = ["/s/", "/branding/"];
 
