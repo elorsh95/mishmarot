@@ -116,3 +116,11 @@ export interface WeekTemplateSummary {
 }
 
 export const TEMPLATE_MAX_PER_TEAM = 20;
+
+/** One change to a schedule cell, from the audit log (see history.ts). */
+export interface CellHistoryItem {
+  id: string;
+  actorName: string;
+  summary: string;
+  createdAt: string;
+}

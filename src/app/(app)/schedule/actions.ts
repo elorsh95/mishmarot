@@ -13,6 +13,7 @@ import {
   setWeekStatus,
 } from "@/modules/schedule/service";
 import type { ApplyResult } from "@/modules/schedule/engine";
+import { cellHistory } from "@/modules/schedule/history";
 import { saveUndo, undoBatch } from "@/modules/schedule/undo";
 import {
   applyTemplate,
@@ -245,5 +246,11 @@ export async function deleteTemplateAction(templateId: string) {
   return runAction((actor) => deleteTemplate(actor, idSchema.parse(templateId)), {
     revalidate: ["/audit"],
     message: "התבנית נמחקה",
+  });
+}
+
+export async function cellHistoryAction(agentId: string, day: string) {
+  return runAction((actor) => cellHistory(actor, idSchema.parse(agentId), date.parse(day)), {
+    revalidate: [],
   });
 }
