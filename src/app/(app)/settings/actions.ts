@@ -14,6 +14,7 @@ import {
 } from "@/modules/catalog/service";
 import { clearSpecialDay, setSpecialDay, specialDaySchema } from "@/modules/calendar/service";
 import { removeLogo, setLogo } from "@/modules/branding/service";
+import { retentionSchema, runRetention, updateRetention } from "@/modules/retention/service";
 import { securitySettingsSchema, updateSecuritySettings } from "@/modules/security/service";
 import { settingsSchema, updateSettings } from "@/modules/settings/service";
 
@@ -94,5 +95,23 @@ export async function updateSecuritySettingsAction(input: unknown) {
   return runAction((actor) => updateSecuritySettings(actor, securitySettingsSchema.parse(input)), {
     revalidate: ["/"],
     message: "הגדרות האבטחה נשמרו",
+  });
+}
+
+export async function updateRetentionAction(input: unknown) {
+  return runAction((actor) => updateRetention(actor, retentionSchema.parse(input)), {
+    revalidate: ["/settings"],
+    message: "מדיניות שמירת המידע נשמרה",
+  });
+}
+
+export async function previewRetentionAction() {
+  return runAction((actor) => runRetention(actor, { dryRun: true }), { revalidate: [] });
+}
+
+export async function runRetentionAction() {
+  return runAction((actor) => runRetention(actor), {
+    revalidate: ["/settings"],
+    message: "המידע הישן נמחק",
   });
 }

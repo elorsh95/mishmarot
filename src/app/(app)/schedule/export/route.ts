@@ -1,3 +1,4 @@
+import { logAccess } from "@/modules/access/service";
 import type { NextRequest } from "next/server";
 import { isIsoDate, todayIso, weekStartOf } from "@/lib/dates";
 import { xlsxResponse } from "@/lib/xlsx-response";
@@ -25,6 +26,12 @@ export async function GET(request: NextRequest) {
     Promise.all(selected.map((t) => getWeekView(user, t.id, weekStart))),
   ]);
   const label = teamParam === "all" ? "כל הצוותים" : selected[0].name;
+  await logAccess(user, {
+    action: "export",
+    resource: "schedule",
+    detail: `ייצוא הסידור לאקסל · ${label} · שבוע ${weekStart}`,
+    teamId: teamParam === "all" ? null : selected[0].id,
+  });
   return xlsxResponse(
     await weekScheduleXlsx(views, catalog, (await getLogo())?.bytes ?? null),
     `סידור עבודה - ${label} ${weekStart}.xlsx`,

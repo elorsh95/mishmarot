@@ -1,8 +1,9 @@
+import { logAccess } from "@/modules/access/service";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
-import { isIsoDate, todayIso, weekStartOf } from "@/lib/dates";
+import { formatDayMonth, isIsoDate, todayIso, weekStartOf } from "@/lib/dates";
 import { requireSessionUser } from "@/modules/auth/session";
 import { getCatalog } from "@/modules/catalog/service";
 import { canForTeam } from "@/modules/permissions/check";
@@ -46,6 +47,11 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
       getCatalog(),
       getWeekSeatUsage(user, weekStart),
     ]);
+    await logAccess(user, {
+      action: "view",
+      resource: "schedule",
+      detail: `סידור עבודה · כל הצוותים · שבוע ${formatDayMonth(weekStart)}`,
+    });
     return (
       <AllTeamsBoard
         views={views}
@@ -62,6 +68,12 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
     getCatalog(),
     getWeekSeatUsage(user, weekStart),
   ]);
+  await logAccess(user, {
+    action: "view",
+    resource: "schedule",
+    detail: `סידור עבודה · ${team.name} · שבוע ${formatDayMonth(weekStart)}`,
+    teamId: team.id,
+  });
 
   return (
     <ScheduleBoard

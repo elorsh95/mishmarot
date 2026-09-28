@@ -1,3 +1,4 @@
+import { logAccess } from "@/modules/access/service";
 import type { NextRequest } from "next/server";
 import { todayIso } from "@/lib/dates";
 import { xlsxResponse } from "@/lib/xlsx-response";
@@ -12,7 +13,10 @@ import { scheduleReport } from "@/modules/reports/service";
 export async function GET(request: NextRequest) {
   const user = await getSessionUser();
   if (!user || user.mfaSetupRequired) return new Response(null, { status: 401 });
-  if (!can(user, "schedule.view")) return new Response(null, { status: 403 });
+  if (!can(user, "schedule.view")) {
+    await logAccess(user, { action: "denied", resource: "reports", detail: "ניסיון לייצא דוח" });
+    return new Response(null, { status: 403 });
+  }
   const params = Object.fromEntries(request.nextUrl.searchParams);
   const range = parseReportRange(params, todayIso());
   const view = params.view === "shifts" ? "shifts" : "agents";
@@ -21,6 +25,12 @@ export async function GET(request: NextRequest) {
   // File names can't hold "/", which the date labels use.
   const label = reportRangeLabel(range).replaceAll("/", ".");
   const name = `${title} - ${report.teamName ?? "כל הצוותים"} - ${label}.xlsx`;
+  await logAccess(user, {
+    action: "export",
+    resource: "reports",
+    detail: `ייצוא ${title} לאקסל · ${report.teamName ?? "כל הצוותים"} · ${label}`,
+    teamId: params.team || null,
+  });
   return xlsxResponse(
     await reportXlsx(report, view, (await getLogo())?.bytes ?? null),
     name,

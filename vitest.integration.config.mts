@@ -3,7 +3,13 @@ import path from "node:path";
 
 // Runs against the Firebase emulators: npm run test:integration
 export default defineConfig({
-  resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "src"),
+      // Services may use server-only modules (logging); tests run outside Next.js.
+      "server-only": path.resolve(import.meta.dirname, "src/test/server-only.ts"),
+    },
+  },
   test: {
     include: ["src/**/*.int.test.ts"],
     fileParallelism: false,

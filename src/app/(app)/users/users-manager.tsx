@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import {
+  ClipboardList,
   KeyRound,
   LockOpen,
   Mail,
@@ -89,10 +91,19 @@ export function UsersManager({
         title="משתמשים"
         description="משתמשי המערכת, התפקידים שלהם והצוותים שהם מנהלים"
         actions={
-          <Button onClick={() => setDialog({ kind: "create" })}>
-            <Plus className="h-4 w-4" />
-            משתמש חדש
-          </Button>
+          <>
+            <Link
+              href="/users/review"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium hover:bg-muted"
+            >
+              <ClipboardList className="h-4 w-4" />
+              בדיקת הרשאות
+            </Link>
+            <Button onClick={() => setDialog({ kind: "create" })}>
+              <Plus className="h-4 w-4" />
+              משתמש חדש
+            </Button>
+          </>
         }
       />
       <Card>

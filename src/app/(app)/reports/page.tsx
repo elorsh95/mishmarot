@@ -1,10 +1,11 @@
+import { logAccess } from "@/modules/access/service";
+import { deniedPage } from "@/modules/access/pages";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { todayIso } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireSessionUser } from "@/modules/auth/session";
 import { can } from "@/modules/permissions/check";
-import { parseReportRange } from "@/modules/reports/period";
+import { parseReportRange, reportRangeLabel } from "@/modules/reports/period";
 import { scheduleReport } from "@/modules/reports/service";
 import { QUOTA_PERIOD_LABELS } from "@/modules/schedule/types";
 import { teamsForActor } from "@/modules/teams/service";
@@ -15,7 +16,7 @@ export const metadata: Metadata = { title: "דוחות" };
 
 export default async function ReportsPage({ searchParams }: PageProps<"/reports">) {
   const user = await requireSessionUser();
-  if (!can(user, "schedule.view")) notFound();
+  if (!can(user, "schedule.view")) await deniedPage(user, "דוחות");
   const params = await searchParams;
   const range = parseReportRange(params, todayIso());
   const view = params.view === "shifts" ? "shifts" : "agents";
@@ -23,6 +24,12 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
   const teamId =
     typeof params.team === "string" && teams.some((t) => t.id === params.team) ? params.team : "";
   const report = await scheduleReport(user, range, teamId || null);
+  await logAccess(user, {
+    action: "view",
+    resource: "reports",
+    detail: `דוחות · ${report.teamName ?? "כל הצוותים"} · ${reportRangeLabel(range)}`,
+    teamId: teamId || null,
+  });
 
   return (
     <>

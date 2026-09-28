@@ -1,5 +1,6 @@
+import { logAccess } from "@/modules/access/service";
+import { deniedPage } from "@/modules/access/pages";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { requireSessionUser } from "@/modules/auth/session";
 import { can } from "@/modules/permissions/check";
 import { listRoles } from "@/modules/roles/service";
@@ -11,8 +12,9 @@ export const metadata: Metadata = { title: "משתמשים" };
 
 export default async function UsersPage() {
   const user = await requireSessionUser();
-  if (!can(user, "users.manage")) notFound();
+  if (!can(user, "users.manage")) await deniedPage(user, "משתמשים");
   const [users, roles, teams] = await Promise.all([listUsers(user), listRoles(), listAllTeams()]);
+  await logAccess(user, { action: "view", resource: "users", detail: "רשימת המשתמשים" });
   return (
     <UsersManager
       users={users}

@@ -1,0 +1,46 @@
+name: Data retention
+
+# Applies the retention policy (Settings → אבטחה → שמירת מידע) every night, on each
+# environment that has a service account secret. Can also be run by hand from the Actions tab.
+on:
+  schedule:
+    - cron: "17 0 * * *" # 02:17–03:17 Israel time
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only count what would be deleted"
+        type: boolean
+        default: false
+
+jobs:
+  retention:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, prod]
+    env:
+      SERVICE_ACCOUNT: ${{ matrix.env == 'prod' && secrets.FIREBASE_SERVICE_ACCOUNT_PROD || secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.env == 'prod' && 'main' || 'dev' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Credentials
+        id: creds
+        run: |
+          if [ -z "$SERVICE_ACCOUNT" ]; then
+            echo "::notice::No service account secret for ${{ matrix.env }}; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+          echo "FIREBASE_PROJECT_ID=$(node -p "JSON.parse(require('fs').readFileSync('.firebaserc','utf8')).projects['${{ matrix.env }}']")" >> "$GITHUB_ENV"
+      - if: steps.creds.outputs.skip != 'true'
+        run: npm ci
+      - if: steps.creds.outputs.skip != 'true'
+        run: npm run retention -- ${{ inputs.dry_run && '--dry-run' || '' }}

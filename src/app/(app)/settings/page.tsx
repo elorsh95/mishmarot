@@ -1,6 +1,6 @@
+import { deniedPage } from "@/modules/access/pages";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { cn } from "@/lib/cn";
 import { requireSessionUser } from "@/modules/auth/session";
@@ -10,6 +10,7 @@ import { listCalendar } from "@/modules/calendar/service";
 import { getCatalog, listAttendanceStatuses } from "@/modules/catalog/service";
 import { addDays, todayIso } from "@/lib/dates";
 import { can } from "@/modules/permissions/check";
+import { getRetention } from "@/modules/retention/service";
 import { countUsersWithoutMfa, getSecuritySettings } from "@/modules/security/service";
 import { getSettings } from "@/modules/settings/service";
 import {
@@ -21,6 +22,7 @@ import {
 import { BrandingCard } from "./branding-card";
 import { GeneralSettingsCard } from "./general-settings";
 import { HolidaysCard } from "./holidays-card";
+import { RetentionCard } from "./retention-card";
 import { SecuritySettingsCard } from "./security-card";
 
 export const metadata: Metadata = { title: "הגדרות" };
@@ -41,7 +43,7 @@ type TabKey = (typeof TABS)[number]["key"];
 export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
   const user = await requireSessionUser();
   const tabs = TABS.filter((t) => can(user, t.needs));
-  if (tabs.length === 0) notFound();
+  if (tabs.length === 0) await deniedPage(user, "הגדרות");
   const { tab: tabParam } = await searchParams;
   const tab: TabKey = tabs.find((t) => t.key === tabParam)?.key ?? tabs[0].key;
 
@@ -55,11 +57,18 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
       </>
     );
   } else if (tab === "security") {
-    const [security, withoutMfa] = await Promise.all([
+    const [security, withoutMfa, retention] = await Promise.all([
       getSecuritySettings(),
       countUsersWithoutMfa(user),
+      getRetention(),
     ]);
-    content = <SecuritySettingsCard settings={security} usersWithoutMfa={withoutMfa} />;
+    const { lastRunAt, lastResult, ...policy } = retention;
+    content = (
+      <>
+        <SecuritySettingsCard settings={security} usersWithoutMfa={withoutMfa} />
+        <RetentionCard settings={policy} lastRunAt={lastRunAt} lastResult={lastResult} />
+      </>
+    );
   } else if (tab === "holidays") {
     const today = todayIso();
     content = <HolidaysCard rows={await listCalendar(addDays(today, -7), addDays(today, 365))} />;

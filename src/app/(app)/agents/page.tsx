@@ -1,3 +1,4 @@
+import { logAccess } from "@/modules/access/service";
 import type { Metadata } from "next";
 import { Card } from "@/components/ui/card";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
@@ -23,6 +24,7 @@ export default async function AgentsPage() {
       </>
     );
   }
+  await logAccess(user, { action: "view", resource: "agents", detail: "רשימת הנציגים" });
   const [agents, viewTeams, manageTeams, catalog, settings] = await Promise.all([
     listAgents(user, { includeInactive: true }),
     teamsForActor(user, "agents.view", { includeInactive: true }),

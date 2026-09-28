@@ -1,6 +1,7 @@
+import { logAccess } from "@/modules/access/service";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { isIsoDate, todayIso, weekStartOf, formatDateTime } from "@/lib/dates";
+import { formatDateTime, formatDayMonth, isIsoDate, todayIso, weekStartOf } from "@/lib/dates";
 import { getSessionUser, requireSessionUser } from "@/modules/auth/session";
 import { getBranding } from "@/modules/branding/service";
 import { logoUrl } from "@/modules/branding/types";
@@ -45,6 +46,12 @@ export default async function PrintSchedulePage({ searchParams }: PageProps<"/pr
     Promise.all(selected.map((t) => getWeekView(user, t.id, weekStart))),
   ]);
   const printedAt = formatDateTime(new Date().toISOString());
+  await logAccess(user, {
+    action: "export",
+    resource: "schedule",
+    detail: `הדפסה/PDF של הסידור · ${teamParam === "all" ? "כל הצוותים" : selected[0].name} · שבוע ${formatDayMonth(weekStart)}`,
+    teamId: teamParam === "all" ? null : selected[0].id,
+  });
 
   return (
     <div className="print-root min-h-screen bg-muted print:bg-white">
