@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireSessionUser } from "@/modules/auth/session";
+import { getSecuritySettings } from "@/modules/security/service";
 import { ChangePasswordForm } from "./change-password-form";
+import { MfaSetup } from "./mfa-card";
 
 export const metadata: Metadata = { title: "החשבון שלי" };
 
 export default async function AccountPage() {
   const user = await requireSessionUser();
+  const security = await getSecuritySettings();
   return (
     <>
       <PageHeader title="החשבון שלי" />
@@ -22,6 +25,12 @@ export default async function AccountPage() {
               </Detail>
               <Detail label="תפקיד">{user.roleName}</Detail>
             </dl>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader title="אימות דו-שלבי" />
+          <CardBody>
+            <MfaSetup enabled={user.mfaEnabled} required={security.mfa === "required"} />
           </CardBody>
         </Card>
         <Card>

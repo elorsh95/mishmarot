@@ -28,6 +28,7 @@ import type { Theme } from "@/components/theme";
 import { ThemeSwitch } from "@/components/theme-switch";
 import { cn } from "@/lib/cn";
 import { CommandPalette } from "./command-palette";
+import { IdleGuard } from "./idle-guard";
 import { NAV_GROUP_LABELS, type NavGroup, type NavIcon, type NavItem } from "./nav-items";
 
 const ICONS: Record<NavIcon, LucideIcon> = {
@@ -50,13 +51,26 @@ export interface ShellProps {
   badges: { approvals: { pending: number; urgent: number }; transfers: number };
   user: { fullName: string; roleName: string };
   logout: () => Promise<void>;
+  /** Logs out after the idle time (security settings). */
+  idleLogout: () => Promise<void>;
+  idleMinutes: number;
   /** The company logo (settings), shown instead of the app mark. */
   logoUrl: string | null;
   theme: Theme;
   children: ReactNode;
 }
 
-export function AppShell({ items, badges, user, logout, logoUrl, theme, children }: ShellProps) {
+export function AppShell({
+  items,
+  badges,
+  user,
+  logout,
+  idleLogout,
+  idleMinutes,
+  logoUrl,
+  theme,
+  children,
+}: ShellProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -227,6 +241,7 @@ export function AppShell({ items, badges, user, logout, logoUrl, theme, children
 
       <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">{children}</main>
       <CommandPalette items={items} open={searching} onOpenChange={setSearching} />
+      <IdleGuard minutes={idleMinutes} onIdle={idleLogout} />
     </div>
   );
 }

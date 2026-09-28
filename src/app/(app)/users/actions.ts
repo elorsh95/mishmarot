@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { runAction } from "@/lib/action";
+import { resetUserMfa, unlockUser } from "@/modules/security/service";
 import {
   createUserSchema,
   deleteUser,
@@ -50,5 +51,19 @@ export async function deleteUserAction(userId: string) {
   return runAction((actor) => deleteUser(actor, id.parse(userId)), {
     revalidate: REVALIDATE,
     message: "המשתמש נמחק",
+  });
+}
+
+export async function unlockUserAction(userId: string) {
+  return runAction((actor) => unlockUser(actor, id.parse(userId)), {
+    revalidate: ["/users"],
+    message: "הנעילה בוטלה",
+  });
+}
+
+export async function resetMfaAction(userId: string) {
+  return runAction((actor) => resetUserMfa(actor, id.parse(userId)), {
+    revalidate: ["/users"],
+    message: "האימות הדו-שלבי אופס",
   });
 }

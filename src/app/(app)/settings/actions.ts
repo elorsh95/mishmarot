@@ -14,6 +14,7 @@ import {
 } from "@/modules/catalog/service";
 import { clearSpecialDay, setSpecialDay, specialDaySchema } from "@/modules/calendar/service";
 import { removeLogo, setLogo } from "@/modules/branding/service";
+import { securitySettingsSchema, updateSecuritySettings } from "@/modules/security/service";
 import { settingsSchema, updateSettings } from "@/modules/settings/service";
 
 const REVALIDATE = ["/settings", "/schedule", "/agents", "/approvals", "/attendance", "/"];
@@ -86,5 +87,12 @@ export async function removeLogoAction() {
   return runAction((actor) => removeLogo(actor), {
     revalidate: BRANDING_REVALIDATE,
     message: "הלוגו הוסר",
+  });
+}
+
+export async function updateSecuritySettingsAction(input: unknown) {
+  return runAction((actor) => updateSecuritySettings(actor, securitySettingsSchema.parse(input)), {
+    revalidate: ["/"],
+    message: "הגדרות האבטחה נשמרו",
   });
 }

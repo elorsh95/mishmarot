@@ -11,7 +11,7 @@ import { teamsForActor } from "@/modules/teams/service";
 /** Weekly schedule as Excel: ?team=<id>|all&week=YYYY-MM-DD. One sheet per team. */
 export async function GET(request: NextRequest) {
   const user = await getSessionUser();
-  if (!user) return new Response(null, { status: 401 });
+  if (!user || user.mfaSetupRequired) return new Response(null, { status: 401 });
   const params = request.nextUrl.searchParams;
   const teams = await teamsForActor(user, "schedule.view");
   const teamParam = params.get("team") ?? "";

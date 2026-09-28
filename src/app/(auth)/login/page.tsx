@@ -7,11 +7,14 @@ import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "התחברות" };
 
-export default async function LoginPage() {
+export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   if (await getSessionUser()) redirect("/");
+  const { reason } = await searchParams;
   return (
     <AuthCard subtitle="ניהול סידור עבודה שבועי">
-      <LoginForm />
+      <LoginForm
+        notice={reason === "idle" ? "נותקת מהמערכת אחרי זמן ללא פעילות. יש להתחבר שוב." : undefined}
+      />
       <p className="mt-4 text-center text-sm">
         <Link href="/forgot-password" className="text-primary hover:underline">
           שכחתי סיסמה
