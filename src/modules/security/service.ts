@@ -7,7 +7,10 @@ import { DomainError, NotFoundError } from "@/lib/errors";
 import { RateLimiter } from "@/lib/rate-limit";
 import { generateTotpSecret, totpUri, verifyTotp } from "@/lib/totp";
 import { audit, auditInTx } from "@/modules/audit/service";
+import { PERMISSION_KEYS, PERMISSIONS, type RolePermissions } from "@/modules/permissions/catalog";
 import { assertCan, type Actor } from "@/modules/permissions/check";
+import type { PermissionReview, ReviewRow } from "./review-types";
+import { IDLE_FLAG_DAYS } from "./review-types";
 import {
   DEFAULT_SECURITY,
   IDLE_OPTIONS,
@@ -311,4 +314,97 @@ export async function countUsersWithoutMfa(actor: Actor): Promise<number> {
   assertCan(actor, "settings.manage");
   const snap = await col(COLLECTIONS.users).where("isActive", "==", true).get();
   return snap.docs.filter((d) => d.get("mfaEnabled") !== true).length;
+}
+
+// ---- Periodic permissions review ----
+
+const reviewRef = () => col(COLLECTIONS.settings).doc("permissionReview");
+
+const ADMIN_PERMISSIONS = ["users.manage", "roles.manage", "settings.manage"] as const;
+
+/** Every user with their role's permissions and what needs attention, for the review. */
+export async function permissionReview(actor: Actor): Promise<PermissionReview> {
+  assertCan(actor, "users.manage");
+  const [usersSnap, rolesSnap, teamsSnap, review] = await Promise.all([
+    col(COLLECTIONS.users).get(),
+    col(COLLECTIONS.roles).get(),
+    col(COLLECTIONS.teams).get(),
+    reviewRef().get(),
+  ]);
+  const roles = new Map(
+    rolesSnap.docs.map((d) => [
+      d.id,
+      { name: String(d.get("name")), permissions: (d.get("permissions") ?? {}) as RolePermissions },
+    ]),
+  );
+  const now = Date.now();
+  const toIso = (v: unknown) =>
+    v && typeof (v as { toDate?: () => Date }).toDate === "function"
+      ? (v as { toDate: () => Date }).toDate().toISOString()
+      : null;
+  const rows: ReviewRow[] = usersSnap.docs.map((d) => {
+    const role = roles.get(String(d.get("roleId")));
+    const permissions = role?.permissions ?? {};
+    const lastLoginAt = toIso(d.get("lastLoginAt"));
+    const since = lastLoginAt ?? toIso(d.get("createdAt"));
+    const idleDays = since ? Math.floor((now - Date.parse(since)) / 86_400_000) : 0;
+    const isActive = d.get("isActive") === true;
+    const mfaEnabled = d.get("mfaEnabled") === true;
+    const flags: string[] = [];
+    if (isActive && idleDays >= IDLE_FLAG_DAYS) {
+      flags.push(
+        lastLoginAt
+          ? `לא התחבר/ה ${idleDays} ימים: לשקול השבתה`
+          : `לא התחבר/ה מאז שנוצר/ה (${idleDays} ימים)`,
+      );
+    }
+    if (isActive && !mfaEnabled && ADMIN_PERMISSIONS.some((p) => permissions[p])) {
+      flags.push("הרשאות ניהול בלי אימות דו-שלבי");
+    }
+    if (isActive && !role) flags.push("התפקיד לא קיים");
+    return {
+      userId: d.id,
+      fullName: String(d.get("fullName") ?? ""),
+      username: String(d.get("username") ?? ""),
+      roleName: role?.name ?? String(d.get("roleId")),
+      isActive,
+      mfaEnabled,
+      lastLoginAt,
+      idleDays,
+      teams: teamsSnap.docs
+        .filter((t) => ((t.get("managerIds") as string[] | undefined) ?? []).includes(d.id))
+        .map((t) => String(t.get("name"))),
+      permissions: PERMISSION_KEYS.filter((k) => permissions[k]).map((k) => ({
+        label: PERMISSIONS[k].label,
+        scope: permissions[k]!,
+      })),
+      flags,
+    };
+  });
+  rows.sort(
+    (a, b) =>
+      Number(b.isActive) - Number(a.isActive) ||
+      b.flags.length - a.flags.length ||
+      a.fullName.localeCompare(b.fullName, "he"),
+  );
+  const r = review.data();
+  return {
+    rows,
+    lastReview: r ? { at: toIso(r.at) ?? "", byName: String(r.byName ?? "") } : null,
+  };
+}
+
+/** Records that an admin reviewed the users and their permissions. */
+export async function markPermissionsReviewed(actor: Actor, note: string) {
+  assertCan(actor, "users.manage");
+  const text = z.string().trim().max(500).parse(note);
+  await db().runTransaction(async (tx) => {
+    tx.set(reviewRef(), { at: serverNow(), by: actor.id, byName: actor.fullName, note: text });
+    auditInTx(tx, actor, {
+      action: "permissions.review",
+      entityType: "user",
+      entityId: "review",
+      summary: `בוצעה בדיקה תקופתית של המשתמשים וההרשאות${text ? `: ${text}` : ""}`,
+    });
+  });
 }

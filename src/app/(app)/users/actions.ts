@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { runAction } from "@/lib/action";
-import { resetUserMfa, unlockUser } from "@/modules/security/service";
+import { markPermissionsReviewed, resetUserMfa, unlockUser } from "@/modules/security/service";
 import {
   createUserSchema,
   deleteUser,
@@ -65,5 +65,12 @@ export async function resetMfaAction(userId: string) {
   return runAction((actor) => resetUserMfa(actor, id.parse(userId)), {
     revalidate: ["/users"],
     message: "האימות הדו-שלבי אופס",
+  });
+}
+
+export async function markReviewedAction(note: unknown) {
+  return runAction((actor) => markPermissionsReviewed(actor, z.string().parse(note ?? "")), {
+    revalidate: ["/users/review"],
+    message: "הבדיקה תועדה",
   });
 }

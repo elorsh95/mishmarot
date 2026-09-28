@@ -28,7 +28,8 @@ async function main() {
   const headers = { Authorization: `Bearer ${access_token}`, "Content-Type": "application/json" };
 
   const current = await fetch(url, { headers });
-  if (!current.ok) throw new Error(`Reading auth config failed: ${current.status} ${await current.text()}`);
+  if (!current.ok)
+    throw new Error(`Reading auth config failed: ${current.status} ${await current.text()}`);
   const config = (await current.json()) as Config;
   const domains = config.authorizedDomains ?? [];
 
@@ -53,7 +54,9 @@ async function main() {
     }
     // Firebase locks e-mail settings on some projects. Links then open Firebase's own page,
     // which returns to the login page through the continue URL (see sendPasswordSetupEmail).
-    console.log("::warning::Firebase doesn't allow changing the e-mail link on this project; using its default page.");
+    console.log(
+      "::warning::Firebase doesn't allow changing the e-mail link on this project; using its default page.",
+    );
   }
 }
 

@@ -1,7 +1,8 @@
 import "server-only";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
-import { DomainError } from "@/lib/errors";
+import { DomainError, ForbiddenError } from "@/lib/errors";
+import { logAccess } from "@/modules/access/service";
 import { logError } from "@/lib/error-report";
 import { requireActor, type SessionUser } from "@/modules/auth/session";
 
@@ -30,9 +31,11 @@ export async function runAction<T>(
   options: { revalidate?: string[]; message?: string; allowMfaSetup?: boolean } = {},
 ): Promise<ActionResult<T>> {
   let actorId: string | null = null;
+  let actorName = "";
   try {
     const actor = await requireActor({ allowMfaSetup: options.allowMfaSetup });
     actorId = actor.id;
+    actorName = actor.fullName;
     const data = await fn(actor);
     for (const path of options.revalidate ?? ["/"]) revalidatePath(path, "layout");
     return { ok: true, data, message: options.message };
@@ -40,6 +43,12 @@ export async function runAction<T>(
     if (err instanceof ZodError) {
       const fieldErrors = zodFieldErrors(err);
       return { ok: false, error: Object.values(fieldErrors)[0] ?? "נתונים לא תקינים", fieldErrors };
+    }
+    if (err instanceof ForbiddenError && actorId) {
+      await logAccess(
+        { id: actorId, fullName: actorName },
+        { action: "denied", resource: "action", detail: `פעולה נדחתה: ${err.message}` },
+      );
     }
     if (err instanceof DomainError) return { ok: false, error: err.message };
     logError(err, { source: "action", userId: actorId });
