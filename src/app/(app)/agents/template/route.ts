@@ -5,7 +5,7 @@ import { getSessionUser } from "@/modules/auth/session";
 /** Excel template for importing agents. */
 export async function GET() {
   const user = await getSessionUser();
-  if (!user) return new Response(null, { status: 401 });
+  if (!user || user.mfaSetupRequired) return new Response(null, { status: 401 });
   try {
     const body = await agentImportTemplate(user);
     return new Response(new Uint8Array(body), {

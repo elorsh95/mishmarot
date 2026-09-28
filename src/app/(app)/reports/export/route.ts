@@ -11,7 +11,7 @@ import { scheduleReport } from "@/modules/reports/service";
 /** The report as Excel, with the page's params: period/date or from/to, team, view. */
 export async function GET(request: NextRequest) {
   const user = await getSessionUser();
-  if (!user) return new Response(null, { status: 401 });
+  if (!user || user.mfaSetupRequired) return new Response(null, { status: 401 });
   if (!can(user, "schedule.view")) return new Response(null, { status: 403 });
   const params = Object.fromEntries(request.nextUrl.searchParams);
   const range = parseReportRange(params, todayIso());

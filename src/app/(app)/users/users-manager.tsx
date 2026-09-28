@@ -1,7 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, Mail, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  KeyRound,
+  LockOpen,
+  Mail,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  ShieldOff,
+  Trash2,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,7 +19,7 @@ import { Table, Td, Th } from "@/components/ui/table";
 import { useAction } from "@/components/ui/use-action";
 import { formatDateTime } from "@/lib/dates";
 import type { UserListItem } from "@/modules/users/service";
-import { sendPasswordLinkAction } from "./actions";
+import { resetMfaAction, sendPasswordLinkAction, unlockUserAction } from "./actions";
 import {
   DeleteUserDialog,
   ResetPasswordDialog,
@@ -50,10 +59,23 @@ export function UsersManager({
         ? `נשלח קישור לאיפוס סיסמה ל-${u.email}`
         : `ההזמנה נשלחה שוב ל-${u.email}`,
     });
+  const security = useAction();
+  const unlock = (u: UserListItem) => security.run(() => unlockUserAction(u.id));
+  const resetMfa = (u: UserListItem) => {
+    if (
+      window.confirm(
+        `לאפס את האימות הדו-שלבי של ${u.fullName}? בכניסה הבאה הוא/היא יגדירו אותו מחדש (אם הוא חובה), או ייכנסו עם סיסמה בלבד.`,
+      )
+    ) {
+      security.run(() => resetMfaAction(u.id));
+    }
+  };
   const actions = (u: UserListItem) => (
     <RowActions
       user={u}
-      busy={linkAction.pending}
+      busy={linkAction.pending || security.pending}
+      onUnlock={() => unlock(u)}
+      onResetMfa={() => resetMfa(u)}
       onEdit={() => setDialog({ kind: "edit", user: u })}
       onPassword={() => setDialog({ kind: "password", user: u })}
       onSendLink={() => sendLink(u)}
@@ -163,10 +185,33 @@ export function UsersManager({
   );
 }
 
+function isLocked(user: UserListItem) {
+  return !!user.lockedUntil && user.lockedUntil > Date.now();
+}
+
 function StatusBadge({ user }: { user: UserListItem }) {
+  const mfa = user.mfaEnabled ? (
+    <Badge tone="primary" title="אימות דו-שלבי מופעל">
+      <ShieldCheck className="h-3 w-3" />
+      2FA
+    </Badge>
+  ) : null;
   if (!user.isActive) return <Badge tone="danger">מושבת</Badge>;
+  if (isLocked(user)) {
+    return (
+      <span className="inline-flex gap-1">
+        <Badge tone="danger">נעול</Badge>
+        {mfa}
+      </span>
+    );
+  }
   if (!user.passwordSetAt && !user.lastLoginAt) return <Badge tone="warning">ממתין להפעלה</Badge>;
-  return <Badge tone="success">פעיל</Badge>;
+  return (
+    <span className="inline-flex gap-1">
+      <Badge tone="success">פעיל</Badge>
+      {mfa}
+    </span>
+  );
 }
 
 function RowActions({
@@ -176,9 +221,13 @@ function RowActions({
   onPassword,
   onSendLink,
   onDelete,
+  onUnlock,
+  onResetMfa,
 }: {
   user: UserListItem;
   busy: boolean;
+  onUnlock: () => void;
+  onResetMfa: () => void;
   onEdit: () => void;
   onPassword: () => void;
   onSendLink: () => void;
@@ -189,6 +238,30 @@ function RowActions({
   const linkLabel = invite ? "שליחת ההזמנה מחדש" : "שליחת קישור לאיפוס סיסמה";
   return (
     <div className="flex justify-end gap-1">
+      {isLocked(user) ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="ביטול נעילה"
+          title="ביטול נעילה"
+          disabled={busy}
+          onClick={onUnlock}
+        >
+          <LockOpen className="h-4 w-4" />
+        </Button>
+      ) : null}
+      {user.mfaEnabled ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="איפוס אימות דו-שלבי"
+          title="איפוס אימות דו-שלבי (למשל אחרי החלפת טלפון)"
+          disabled={busy}
+          onClick={onResetMfa}
+        >
+          <ShieldOff className="h-4 w-4" />
+        </Button>
+      ) : null}
       {user.email && user.isActive ? (
         <Button
           variant="ghost"

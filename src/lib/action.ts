@@ -27,11 +27,11 @@ export function zodFieldErrors(err: ZodError): Record<string, string> {
  */
 export async function runAction<T>(
   fn: (actor: SessionUser) => Promise<T>,
-  options: { revalidate?: string[]; message?: string } = {},
+  options: { revalidate?: string[]; message?: string; allowMfaSetup?: boolean } = {},
 ): Promise<ActionResult<T>> {
   let actorId: string | null = null;
   try {
-    const actor = await requireActor();
+    const actor = await requireActor({ allowMfaSetup: options.allowMfaSetup });
     actorId = actor.id;
     const data = await fn(actor);
     for (const path of options.revalidate ?? ["/"]) revalidatePath(path, "layout");

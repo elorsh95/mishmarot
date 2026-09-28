@@ -29,6 +29,12 @@ export interface AppUser {
   passwordSetAt: string | null;
   lastLoginAt: string | null;
   createdAt: string;
+  /** Two-step verification is set up (the secret itself is in userSecrets). */
+  mfaEnabled?: boolean;
+  /** Locked after repeated failed logins, until this time (ms). */
+  lockedUntil?: number | null;
+  failedLogins?: number;
+  failedLoginsSince?: number | null;
 }
 
 /**

@@ -10,6 +10,7 @@ import { listCalendar } from "@/modules/calendar/service";
 import { getCatalog, listAttendanceStatuses } from "@/modules/catalog/service";
 import { addDays, todayIso } from "@/lib/dates";
 import { can } from "@/modules/permissions/check";
+import { countUsersWithoutMfa, getSecuritySettings } from "@/modules/security/service";
 import { getSettings } from "@/modules/settings/service";
 import {
   AbsenceTypesCard,
@@ -20,11 +21,13 @@ import {
 import { BrandingCard } from "./branding-card";
 import { GeneralSettingsCard } from "./general-settings";
 import { HolidaysCard } from "./holidays-card";
+import { SecuritySettingsCard } from "./security-card";
 
 export const metadata: Metadata = { title: "הגדרות" };
 
 const TABS = [
   { key: "general", label: "כללי", needs: "settings.manage" },
+  { key: "security", label: "אבטחה", needs: "settings.manage" },
   { key: "holidays", label: "חגים וימים מיוחדים", needs: "catalog.manage" },
   { key: "shifts", label: "משמרות", needs: "catalog.manage" },
   { key: "locations", label: "מיקומי עבודה", needs: "catalog.manage" },
@@ -51,6 +54,12 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
         <BrandingCard logoUrl={logoUrl(branding)} />
       </>
     );
+  } else if (tab === "security") {
+    const [security, withoutMfa] = await Promise.all([
+      getSecuritySettings(),
+      countUsersWithoutMfa(user),
+    ]);
+    content = <SecuritySettingsCard settings={security} usersWithoutMfa={withoutMfa} />;
   } else if (tab === "holidays") {
     const today = todayIso();
     content = <HolidaysCard rows={await listCalendar(addDays(today, -7), addDays(today, 365))} />;

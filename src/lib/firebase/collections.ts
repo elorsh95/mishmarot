@@ -28,6 +28,8 @@ export const COLLECTIONS = {
   weekTemplates: "weekTemplates",
   attendanceStatuses: "attendanceStatuses",
   attendance: "attendance",
+  userSecrets: "userSecrets",
+  mfaChallenges: "mfaChallenges",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

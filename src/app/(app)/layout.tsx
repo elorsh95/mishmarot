@@ -8,7 +8,7 @@ import { logoUrl } from "@/modules/branding/types";
 import { countPendingApprovals } from "@/modules/approvals/service";
 import { can } from "@/modules/permissions/check";
 import { countIncomingTransfers } from "@/modules/transfers/service";
-import { logoutAction } from "../(auth)/login/actions";
+import { idleLogoutAction, logoutAction } from "../(auth)/login/actions";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireSessionUser();
@@ -29,6 +29,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       badges={{ approvals, transfers }}
       user={{ fullName: user.fullName, roleName: user.roleName }}
       logout={logoutAction}
+      idleLogout={idleLogoutAction}
+      idleMinutes={user.idleMinutes}
       logoUrl={logoUrl(branding)}
       theme={parseTheme((await cookies()).get(THEME_COOKIE)?.value)}
     >
