@@ -24,12 +24,19 @@ import { auditInTx } from "@/modules/audit/service";
 import { getDayInfos } from "@/modules/calendar/service";
 import { shiftRunsOn, type DayInfo } from "@/modules/calendar/types";
 import { getCatalog } from "@/modules/catalog/service";
-import { assertCanForTeam, canForTeam, teamScope, type Actor } from "@/modules/permissions/check";
+import {
+  assertCan,
+  assertCanForTeam,
+  canForTeam,
+  teamScope,
+  type Actor,
+} from "@/modules/permissions/check";
 import { getSettings } from "@/modules/settings/service";
 import { getTeam, type Team } from "@/modules/teams/service";
 import { applyChanges, noChanges, type ApplyResult } from "./engine";
 import { countUsedQuotaDays, quotaPeriodField, quotaPeriodKey } from "./quota";
 import { isPastWeek } from "./rules";
+import { seatUsage, type SeatUsage } from "./seats";
 import {
   assignmentId,
   weekId,
@@ -461,4 +468,21 @@ export async function listUpcomingRejected(
   return entries
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((entry) => ({ entry, agent: agents.get(entry.agentId) }));
+}
+
+/**
+ * Seats taken at each location across the whole center this week, for the occupancy check.
+ * Counts only (no names), so anyone who can view some schedule may see them.
+ */
+export async function getWeekSeatUsage(actor: Actor, weekStartInput: IsoDate): Promise<SeatUsage> {
+  assertCan(actor, "schedule.view");
+  const weekStart = weekStartOf(weekStartInput);
+  const [catalog, snap] = await Promise.all([
+    getCatalog(),
+    col(COLLECTIONS.assignments).where("weekStart", "==", weekStart).get(),
+  ]);
+  return seatUsage(
+    snap.docs.map((d) => fromDoc<Assignment>(d)),
+    catalog.shifts,
+  );
 }
