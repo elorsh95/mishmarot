@@ -47,6 +47,7 @@ import type { Catalog } from "@/modules/catalog/service";
 import type { SkippedOp } from "@/modules/schedule/engine";
 import type { WeekView } from "@/modules/schedule/service";
 import { quotaPeriodKey } from "@/modules/schedule/quota";
+import { seatUsage, type SeatUsage } from "@/modules/schedule/seats";
 import { assignmentId, type Assignment } from "@/modules/schedule/types";
 import {
   clearWeekAction,
@@ -58,6 +59,7 @@ import {
 import { BulkEditor } from "./bulk-editor";
 import { CellEditor, QuotaBadge, QuotaSummaryBadge, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
+import { hasSeatLimits, LocationSplit, SeatsLine } from "./seats-summary";
 import { ProposeDialog } from "./propose-dialog";
 import { ShareDialog } from "./share-dialog";
 import { TemplatesDialog } from "./templates-dialog";
@@ -69,11 +71,14 @@ export function ScheduleBoard({
   catalog,
   teams,
   canViewAgents,
+  seats,
 }: {
   view: WeekView;
   catalog: Catalog;
   teams: Array<{ id: string; name: string }>;
   canViewAgents: boolean;
+  /** Seats taken across the whole center this week. */
+  seats: SeatUsage;
 }) {
   const router = useRouter();
   const highlight = useSearchParams().get("agent");
@@ -286,6 +291,7 @@ export function ScheduleBoard({
                   {t.name}
                 </option>
               ))}
+              <option value="all">כל הצוותים</option>
             </Select>
           ) : (
             <Badge tone="primary" className="text-sm">
@@ -501,6 +507,7 @@ export function ScheduleBoard({
             </p>
           ) : null}
           <AgentsGrid
+            seats={seats}
             view={view}
             catalog={catalog}
             editable={editable}
@@ -519,6 +526,7 @@ export function ScheduleBoard({
             onCell={openCell}
             selection={selection}
             highlight={highlight}
+            seats={seats}
           />
         </>
       ) : (
@@ -671,9 +679,10 @@ interface GridProps {
   selection: Selection;
   /** An agent to point out (from quick search: ?agent=). */
   highlight: string | null;
+  seats: SeatUsage;
 }
 
-function DayHeader({ date, today, info }: { date: string; today: string; info?: DayInfo }) {
+export function DayHeader({ date, today, info }: { date: string; today: string; info?: DayInfo }) {
   return (
     <div className={cn("flex flex-col items-center", date === today && "text-primary")}>
       <span className="text-sm font-semibold">{WEEKDAY_NAMES[weekdayOf(date)]}</span>
@@ -684,7 +693,7 @@ function DayHeader({ date, today, info }: { date: string; today: string; info?: 
 }
 
 /** Holiday name under the date: red for a closed day, amber for an eve, grey otherwise. */
-function HolidayTag({ info }: { info?: DayInfo }) {
+export function HolidayTag({ info }: { info?: DayInfo }) {
   if (!info?.name && info?.kind !== "closed" && info?.kind !== "eve") return null;
   const label =
     info.kind === "closed"
@@ -716,6 +725,7 @@ function AgentsGrid({
   onCell,
   selection,
   highlight,
+  seats,
 }: GridProps) {
   return (
     <Card className="hidden overflow-hidden md:block">
@@ -834,7 +844,7 @@ function AgentsGrid({
             ))}
           </tbody>
           <tfoot>
-            <CoverageFooter view={view} catalog={catalog} />
+            <CoverageFooter view={view} catalog={catalog} seats={seats} />
           </tfoot>
         </table>
       </div>
@@ -888,44 +898,120 @@ function countLabel(count: number, min: number) {
   return min > 0 ? `${count}/${min}` : String(count);
 }
 
-function CoverageFooter({ view, catalog }: { view: WeekView; catalog: Catalog }) {
+function CoverageFooter({
+  view,
+  catalog,
+  seats,
+}: {
+  view: WeekView;
+  catalog: Catalog;
+  seats: SeatUsage;
+}) {
+  const team = seatUsage(Object.values(view.assignments), catalog.shifts);
+  const locations = catalog.locations;
   return (
-    <tr className="bg-muted/60">
-      <th className="sticky start-0 z-10 border-e border-border bg-muted px-3 py-2 text-start text-xs font-semibold text-fg-muted">
-        סה״כ ביום
-      </th>
-      {view.days.map((date) => {
-        const c = shortfall(view, catalog, date);
-        if (view.dayInfo[date]?.kind === "closed" && c.morning + c.evening + c.absent === 0) {
+    <>
+      <tr className="bg-muted/60">
+        <th className="sticky start-0 z-10 border-e border-border bg-muted px-3 py-2 text-start text-xs font-semibold text-fg-muted">
+          סה״כ ביום
+        </th>
+        {view.days.map((date) => {
+          const c = shortfall(view, catalog, date);
+          if (view.dayInfo[date]?.kind === "closed" && c.morning + c.evening + c.absent === 0) {
+            return (
+              <td key={date} className="px-2 py-2 text-center text-xs text-fg-muted">
+                סגור
+              </td>
+            );
+          }
           return (
-            <td key={date} className="px-2 py-2 text-center text-xs text-fg-muted">
-              סגור
+            <td
+              key={date}
+              className={cn(
+                "px-2 py-2 text-center text-xs text-fg-muted",
+                (c.shortMorning || c.shortEvening) && "bg-danger/10",
+              )}
+            >
+              <div className={cn(c.shortMorning && "font-semibold text-danger")}>
+                בוקר:{" "}
+                <strong className={c.shortMorning ? "text-danger" : "text-fg"}>
+                  {countLabel(c.morning, view.team.minMorning)}
+                </strong>
+              </div>
+              <LocationSplit usage={team} date={date} half="morning" locations={locations} />
+              {c.eveningExpected ? (
+                <div className={cn(c.shortEvening && "font-semibold text-danger")}>
+                  ערב:{" "}
+                  <strong className={c.shortEvening ? "text-danger" : "text-fg"}>
+                    {countLabel(c.evening, view.team.minEvening)}
+                  </strong>
+                </div>
+              ) : null}
+              {c.eveningExpected ? (
+                <LocationSplit usage={team} date={date} half="evening" locations={locations} />
+              ) : null}
+              {c.absent > 0 ? <div>נעדרים: {c.absent}</div> : null}
             </td>
           );
-        }
+        })}
+      </tr>
+      {hasSeatLimits(locations) ? (
+        <SeatsFooterRow
+          days={view.days}
+          dayInfo={view.dayInfo}
+          seats={seats}
+          catalog={catalog}
+          label="עמדות · כל המוקד"
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** A table row with the center-wide seat occupancy per day, morning and evening. */
+export function SeatsFooterRow({
+  days,
+  dayInfo,
+  seats,
+  catalog,
+  label,
+}: {
+  days: string[];
+  dayInfo: WeekView["dayInfo"];
+  seats: SeatUsage;
+  catalog: Catalog;
+  label: string;
+}) {
+  return (
+    <tr className="bg-muted/60">
+      <th className="sticky start-0 z-10 border-t border-e border-border bg-muted px-3 py-2 text-start text-xs font-semibold text-fg-muted">
+        {label}
+      </th>
+      {days.map((date) => {
+        const evening = catalog.shifts.some(
+          (s) => s.isActive && s.coversEvening && shiftRunsOn(s, date, dayInfo[date]),
+        );
         return (
           <td
             key={date}
-            className={cn(
-              "px-2 py-2 text-center text-xs text-fg-muted",
-              (c.shortMorning || c.shortEvening) && "bg-danger/10",
-            )}
+            className="border-t border-border bg-muted px-2 py-2 text-center text-[11px] text-fg-muted"
           >
-            <div className={cn(c.shortMorning && "font-semibold text-danger")}>
-              בוקר:{" "}
-              <strong className={c.shortMorning ? "text-danger" : "text-fg"}>
-                {countLabel(c.morning, view.team.minMorning)}
-              </strong>
-            </div>
-            {c.eveningExpected ? (
-              <div className={cn(c.shortEvening && "font-semibold text-danger")}>
-                ערב:{" "}
-                <strong className={c.shortEvening ? "text-danger" : "text-fg"}>
-                  {countLabel(c.evening, view.team.minEvening)}
-                </strong>
-              </div>
+            <SeatsLine
+              usage={seats}
+              date={date}
+              half="morning"
+              label="ב׳"
+              locations={catalog.locations}
+            />
+            {evening ? (
+              <SeatsLine
+                usage={seats}
+                date={date}
+                half="evening"
+                label="ע׳"
+                locations={catalog.locations}
+              />
             ) : null}
-            {c.absent > 0 ? <div>נעדרים: {c.absent}</div> : null}
           </td>
         );
       })}
@@ -943,6 +1029,7 @@ function DayList({
   onCell,
   selection,
   highlight,
+  seats,
 }: GridProps) {
   const initial = view.days.includes(view.today) ? view.today : view.days[0];
   const [day, setDay] = useState(initial);
@@ -999,6 +1086,26 @@ function DayList({
           <span className="font-semibold text-danger"> · חסרים נציגים</span>
         ) : null}
       </p>
+      {hasSeatLimits(catalog.locations) ? (
+        <div className="space-y-0.5 text-xs text-fg-muted">
+          <SeatsLine
+            usage={seats}
+            date={day}
+            half="morning"
+            label="עמדות בבוקר ·"
+            locations={catalog.locations}
+          />
+          {c.eveningExpected ? (
+            <SeatsLine
+              usage={seats}
+              date={day}
+              half="evening"
+              label="עמדות בערב ·"
+              locations={catalog.locations}
+            />
+          ) : null}
+        </div>
+      ) : null}
       <Card className="divide-y divide-border">
         {view.agents.map((agent) => {
           const entry = entryOf(agent.id, day);
@@ -1126,7 +1233,7 @@ function CoverageTable({ view, catalog }: { view: WeekView; catalog: Catalog }) 
   );
 }
 
-function Legend({ catalog }: { catalog: Catalog }) {
+export function Legend({ catalog }: { catalog: Catalog }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-fg-muted">
       {catalog.shifts

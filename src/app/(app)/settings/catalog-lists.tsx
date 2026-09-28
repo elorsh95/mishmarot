@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Clock, Home, Pencil, Plus } from "lucide-react";
+import { Armchair, Clock, Home, Pencil, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -107,14 +107,22 @@ export function LocationsCard({ locations }: { locations: WorkLocation[] }) {
       onAdd={() => setEditing("new")}
       items={locations}
       onEdit={setEditing}
-      details={(l) =>
-        l.requiresQuota ? (
-          <Badge tone="warning">
-            <Home className="h-3 w-3" />
-            דורש מכסה
-          </Badge>
-        ) : null
-      }
+      details={(l) => (
+        <>
+          {l.requiresQuota ? (
+            <Badge tone="warning">
+              <Home className="h-3 w-3" />
+              דורש מכסה
+            </Badge>
+          ) : null}
+          {l.capacity ? (
+            <Badge>
+              <Armchair className="h-3 w-3" />
+              {l.capacity} עמדות
+            </Badge>
+          ) : null}
+        </>
+      )}
     >
       {editing ? (
         <LocationDialog
@@ -502,12 +510,19 @@ function LocationDialog({
 }) {
   const [base, setBase] = useBase(location, list, "#16a34a");
   const [requiresQuota, setRequiresQuota] = useState(location?.requiresQuota ?? false);
+  const [capacity, setCapacity] = useState(location?.capacity ? String(location.capacity) : "");
   const { run, pending, error, fieldErrors } = useAction();
 
   function save() {
-    run(() => saveLocationAction(location?.id ?? null, { ...basePayload(base), requiresQuota }), {
-      onSuccess: onClose,
-    });
+    run(
+      () =>
+        saveLocationAction(location?.id ?? null, {
+          ...basePayload(base),
+          requiresQuota,
+          capacity: capacity === "" ? null : Number(capacity),
+        }),
+      { onSuccess: onClose },
+    );
   }
 
   return (
@@ -527,6 +542,23 @@ function LocationDialog({
           label="דורש מכסה"
           checked={requiresQuota}
           onChange={(e) => setRequiresQuota(e.target.checked)}
+        />
+      </Field>
+      <Field
+        label="מספר עמדות"
+        htmlFor="location-capacity"
+        error={fieldErrors.capacity}
+        hint="אופציונלי, למשל במוקד. בסידור מוצגת תפוסת העמדות בבוקר ובערב, עם התרעה על חריגה או על עמדות פנויות"
+      >
+        <Input
+          id="location-capacity"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          value={capacity}
+          placeholder="ללא הגבלה"
+          onChange={(e) => setCapacity(e.target.value)}
+          className="max-w-32"
         />
       </Field>
       <OrderAndActive values={base} onChange={setBase} errors={fieldErrors} />

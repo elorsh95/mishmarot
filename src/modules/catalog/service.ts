@@ -35,6 +35,8 @@ export interface WorkLocation {
   name: string;
   /** Days at this location count toward the agent's monthly quota and need approval beyond it. */
   requiresQuota: boolean;
+  /** Seats at this location (e.g. the office), for the occupancy check. null = no limit. */
+  capacity?: number | null;
   color: string;
   sortOrder: number;
   isActive: boolean;
@@ -89,7 +91,11 @@ export const shiftInputSchema = z
   })
   .refine((s) => s.coversMorning || s.coversEvening, "משמרת צריכה לכסות בוקר, ערב או שניהם");
 
-export const locationInputSchema = z.object({ ...base, requiresQuota: z.boolean().default(false) });
+export const locationInputSchema = z.object({
+  ...base,
+  requiresQuota: z.boolean().default(false),
+  capacity: z.coerce.number().int().min(1, "לפחות עמדה אחת").max(10000).nullable().default(null),
+});
 export const absenceTypeInputSchema = z.object(base);
 export const attendanceStatusInputSchema = z.object({
   ...base,

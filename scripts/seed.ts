@@ -126,6 +126,9 @@ async function main() {
     const [startTime, endTime] = hours[s.name] ?? [null, null];
     await col(COLLECTIONS.shifts).doc(s.id).update({ startTime, endTime });
   }
+  // Office seats, for the occupancy check in the schedule
+  const office = (await getCatalog()).locations.find((l) => l.name === "מוקד");
+  if (office) await col(COLLECTIONS.locations).doc(office.id).update({ capacity: 10 });
   const catalog = await getCatalog();
   const shift = (name: string) => catalog.shifts.find((s) => s.name === name)!.id;
   const location = (name: string) => catalog.locations.find((l) => l.name === name)!.id;
