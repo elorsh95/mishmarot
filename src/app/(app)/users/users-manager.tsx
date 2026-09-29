@@ -9,6 +9,7 @@ import {
   Mail,
   Pencil,
   Plus,
+  Search,
   ShieldCheck,
   ShieldOff,
   Trash2,
@@ -16,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/form";
 import { EmptyState, PageHeader } from "@/components/ui/page-header";
 import { Table, Td, Th } from "@/components/ui/table";
 import { useAction } from "@/components/ui/use-action";
@@ -49,6 +51,14 @@ export function UsersManager({
   currentUserId: string;
 }) {
   const [dialog, setDialog] = useState<Dialogs>(null);
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  // Also by id, as it appears in error reports (context.user).
+  const shown = q
+    ? users.filter((u) =>
+        [u.fullName, u.username, u.email ?? "", u.id].some((v) => v.toLowerCase().includes(q)),
+      )
+    : users;
   const teamNames = new Map(teams.map((t) => [t.id, t.name]));
   const teamsOf = (u: UserListItem) =>
     u.managedTeamIds.map((id) => teamNames.get(id) ?? id).join(", ");
@@ -106,13 +116,24 @@ export function UsersManager({
           </>
         }
       />
+      <div className="relative mb-3 max-w-sm">
+        <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
+        <Input
+          type="search"
+          aria-label="חיפוש משתמש"
+          placeholder="חיפוש לפי שם, שם משתמש, מייל או מזהה…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="ps-9"
+        />
+      </div>
       <Card>
-        {users.length === 0 ? (
-          <EmptyState title="אין משתמשים" />
+        {shown.length === 0 ? (
+          <EmptyState title={users.length ? "לא נמצאו משתמשים" : "אין משתמשים"} />
         ) : (
           <>
             <ul className="divide-y divide-border md:hidden">
-              {users.map((u) => (
+              {shown.map((u) => (
                 <li key={u.id} className="flex items-start justify-between gap-3 px-4 py-3">
                   <div className="min-w-0 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -151,7 +172,7 @@ export function UsersManager({
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((u) => (
+                  {shown.map((u) => (
                     <tr key={u.id}>
                       <Td className="font-medium">{u.fullName}</Td>
                       <Td>

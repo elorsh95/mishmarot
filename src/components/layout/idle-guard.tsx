@@ -51,7 +51,10 @@ export function IdleGuard({ minutes, onIdle }: { minutes: number; onIdle: () => 
       const left = Math.round((at + minutes * 60_000 - Date.now()) / 1000);
       if (left <= 0) {
         done.current = true;
-        void onIdle();
+        // A full load of the login page, so nothing of the signed-in app stays in memory.
+        void onIdle()
+          .catch(() => undefined)
+          .finally(() => window.location.replace("/login?reason=idle"));
       } else {
         setSecondsLeft(left <= WARN_SECONDS ? left : null);
       }

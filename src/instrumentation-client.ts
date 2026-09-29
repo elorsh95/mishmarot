@@ -6,6 +6,8 @@ const IGNORED = [
   /ResizeObserver loop/,
   // Old tabs after a deploy (the page reloads on the next navigation)
   /Loading chunk .* failed|Failed to fetch dynamically imported module/,
+  // Next.js navigation signals (redirect(), notFound()), not errors
+  /^NEXT_(REDIRECT|NOT_FOUND|HTTP_ERROR_FALLBACK)/,
 ];
 
 function ignored(message: string) {
