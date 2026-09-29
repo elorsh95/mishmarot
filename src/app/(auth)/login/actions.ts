@@ -47,8 +47,10 @@ export async function logoutAction() {
   redirect("/login");
 }
 
-/** Called by the browser after the idle time with no activity. */
+/**
+ * Called by the browser after the idle time with no activity. The browser then goes to the
+ * login page itself: a redirect() here would reach it as a rejected promise.
+ */
 export async function idleLogoutAction() {
   await logout("idle");
-  redirect("/login?reason=idle");
 }
