@@ -60,7 +60,7 @@ import {
 import { BulkEditor } from "./bulk-editor";
 import { CellEditor, QuotaBadge, QuotaSummaryBadge, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
-import { hasSeatLimits, LocationSplit, SeatsLine } from "./seats-summary";
+import { hasSeatLimits, LocationSplit, PoolLine, SeatsLine, type SeatPool } from "./seats-summary";
 import { ProposeDialog } from "./propose-dialog";
 import { ShareDialog } from "./share-dialog";
 import { TemplatesDialog } from "./templates-dialog";
@@ -74,6 +74,7 @@ export function ScheduleBoard({
   activities,
   canViewAgents,
   seats,
+  pools = [],
 }: {
   view: WeekView;
   catalog: Catalog;
@@ -82,6 +83,8 @@ export function ScheduleBoard({
   canViewAgents: boolean;
   /** Seats taken across the whole center this week. */
   seats: SeatUsage;
+  /** The team's activity's own seats, when it has a count. */
+  pools?: SeatPool[];
 }) {
   const router = useRouter();
   const highlight = useSearchParams().get("agent");
@@ -531,6 +534,7 @@ export function ScheduleBoard({
           ) : null}
           <AgentsGrid
             seats={seats}
+            pools={pools}
             view={view}
             catalog={catalog}
             editable={editable}
@@ -550,6 +554,7 @@ export function ScheduleBoard({
             selection={selection}
             highlight={highlight}
             seats={seats}
+            pools={pools}
           />
         </>
       ) : (
@@ -703,6 +708,7 @@ interface GridProps {
   /** An agent to point out (from quick search: ?agent=). */
   highlight: string | null;
   seats: SeatUsage;
+  pools: SeatPool[];
 }
 
 export function DayHeader({ date, today, info }: { date: string; today: string; info?: DayInfo }) {
@@ -749,6 +755,7 @@ function AgentsGrid({
   selection,
   highlight,
   seats,
+  pools,
 }: GridProps) {
   return (
     <Card className="hidden overflow-hidden md:block">
@@ -867,7 +874,7 @@ function AgentsGrid({
             ))}
           </tbody>
           <tfoot>
-            <CoverageFooter view={view} catalog={catalog} seats={seats} />
+            <CoverageFooter view={view} catalog={catalog} seats={seats} pools={pools} />
           </tfoot>
         </table>
       </div>
@@ -925,10 +932,12 @@ function CoverageFooter({
   view,
   catalog,
   seats,
+  pools,
 }: {
   view: WeekView;
   catalog: Catalog;
   seats: SeatUsage;
+  pools: SeatPool[];
 }) {
   const team = seatUsage(Object.values(view.assignments), catalog.shifts);
   const locations = catalog.locations;
@@ -987,6 +996,9 @@ function CoverageFooter({
           label="עמדות · כל המוקד"
         />
       ) : null}
+      {hasSeatLimits(locations) ? (
+        <PoolsFooterRows days={view.days} dayInfo={view.dayInfo} pools={pools} catalog={catalog} />
+      ) : null}
     </>
   );
 }
@@ -1042,6 +1054,98 @@ export function SeatsFooterRow({
   );
 }
 
+/** One table row per activity with its own seats: the seats its teams take each day. */
+export function PoolsFooterRows({
+  days,
+  dayInfo,
+  pools,
+  catalog,
+}: {
+  days: string[];
+  dayInfo: WeekView["dayInfo"];
+  pools: SeatPool[];
+  catalog: Catalog;
+}) {
+  return (
+    <>
+      {pools.map((pool) => (
+        <tr key={pool.id} className="bg-muted/60">
+          <th className="sticky start-0 z-10 border-t border-e border-border bg-muted px-3 py-2 text-start text-xs font-semibold text-fg-muted">
+            עמדות · {pool.label}
+            <span className="block font-normal">{pool.capacity} עמדות</span>
+          </th>
+          {days.map((date) => {
+            const evening = catalog.shifts.some(
+              (s) => s.isActive && s.coversEvening && shiftRunsOn(s, date, dayInfo[date]),
+            );
+            return (
+              <td
+                key={date}
+                className="border-t border-border bg-muted px-2 py-2 text-center text-[11px] text-fg-muted"
+              >
+                <PoolLine
+                  pool={pool}
+                  date={date}
+                  half="morning"
+                  label="ב׳"
+                  locations={catalog.locations}
+                />
+                {evening ? (
+                  <PoolLine
+                    pool={pool}
+                    date={date}
+                    half="evening"
+                    label="ע׳"
+                    locations={catalog.locations}
+                  />
+                ) : null}
+              </td>
+            );
+          })}
+        </tr>
+      ))}
+    </>
+  );
+}
+
+/** Mobile: the activities' seats on one day. */
+export function PoolLines({
+  pools,
+  date,
+  evening,
+  catalog,
+}: {
+  pools: SeatPool[];
+  date: string;
+  evening: boolean;
+  catalog: Catalog;
+}) {
+  return (
+    <>
+      {pools.map((pool) => (
+        <div key={pool.id} className="flex flex-wrap gap-x-2">
+          <PoolLine
+            pool={pool}
+            date={date}
+            half="morning"
+            label={`עמדות ${pool.label} בבוקר ·`}
+            locations={catalog.locations}
+          />
+          {evening ? (
+            <PoolLine
+              pool={pool}
+              date={date}
+              half="evening"
+              label="ערב ·"
+              locations={catalog.locations}
+            />
+          ) : null}
+        </div>
+      ))}
+    </>
+  );
+}
+
 /** Mobile: one day at a time. */
 function DayList({
   view,
@@ -1053,6 +1157,7 @@ function DayList({
   selection,
   highlight,
   seats,
+  pools,
 }: GridProps) {
   const initial = view.days.includes(view.today) ? view.today : view.days[0];
   const [day, setDay] = useState(initial);
@@ -1127,6 +1232,7 @@ function DayList({
               locations={catalog.locations}
             />
           ) : null}
+          <PoolLines pools={pools} date={day} evening={c.eveningExpected} catalog={catalog} />
         </div>
       ) : null}
       <Card className="divide-y divide-border">

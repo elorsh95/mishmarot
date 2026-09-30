@@ -34,7 +34,10 @@ describe("activities", () => {
     await ensureDefaultTeams();
     await ensureDefaultActivities();
     const activities = await listActivities();
-    expect(activities.map((a) => a.name)).toEqual(["רכב חדש", "פסיפיק"]);
+    expect(activities.map((a) => [a.name, a.seats])).toEqual([
+      ["רכב חדש", 18],
+      ["פסיפיק", 28],
+    ]);
     const teams = await listAllTeams();
     const of = (id: string) =>
       teams
@@ -49,6 +52,19 @@ describe("activities", () => {
     await saveActivity(actors.admin(), activities[1].id, { name: "פסיפיק", sortOrder: 5 });
     await ensureDefaultActivities();
     expect(await listActivities()).toHaveLength(2);
+  });
+
+  it("gives existing default activities their seats once, keeping the admin's choice", async () => {
+    await col(COLLECTIONS.activities).doc("new").set({ name: "רכב חדש", sortOrder: 1 });
+    await col(COLLECTIONS.activities).doc("pac").set({ name: "פסיפיק", sortOrder: 2, seats: null });
+    await col(COLLECTIONS.activities).doc("other").set({ name: "אחר", sortOrder: 3 });
+    await ensureDefaultActivities();
+    const seats = Object.fromEntries((await listActivities()).map((a) => [a.id, a.seats]));
+    expect(seats).toEqual({ new: 18, pac: null, other: null });
+
+    await saveActivity(actors.admin(), "new", { name: "רכב חדש", sortOrder: 1, seats: 20 });
+    await ensureDefaultActivities();
+    expect((await listActivities()).find((a) => a.id === "new")?.seats).toBe(20);
   });
 
   it("creates, renames and deletes an activity, with an audit entry each", async () => {

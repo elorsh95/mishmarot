@@ -1,6 +1,12 @@
 import { cn } from "@/lib/cn";
 import type { WorkLocation } from "@/modules/catalog/service";
-import { homeCount, seatStatus, type Half, type SeatUsage } from "@/modules/schedule/seats";
+import {
+  homeCount,
+  poolStatus,
+  seatStatus,
+  type Half,
+  type SeatUsage,
+} from "@/modules/schedule/seats";
 
 type Location = Pick<WorkLocation, "id" | "name" | "requiresQuota" | "capacity" | "isActive">;
 
@@ -72,5 +78,53 @@ export function SeatsLine({
         );
       })}
     </>
+  );
+}
+
+/** An activity's own share of the office seats, with the week's usage by its teams. */
+export interface SeatPool {
+  id: string;
+  label: string;
+  capacity: number;
+  usage: SeatUsage;
+}
+
+/**
+ * The seats an activity's teams take on one half day against the activity's own count:
+ * red when it overflows, amber when seats are free while its agents work from home.
+ */
+export function PoolLine({
+  pool,
+  date,
+  half,
+  label,
+  locations,
+}: {
+  pool: SeatPool;
+  date: string;
+  half: Half;
+  label: string;
+  locations: Location[];
+}) {
+  const s = poolStatus(pool.usage, date, half, pool.capacity, locations);
+  const underused = s.free > 0 && s.home > 0;
+  return (
+    <div
+      className={cn(
+        "tabular-nums",
+        s.over > 0 && "font-semibold text-danger",
+        !s.over && underused && "font-medium text-warning-fg",
+      )}
+      title={
+        s.over > 0
+          ? `${s.over} נציגים של ${pool.label} מעבר לעמדות שלה`
+          : underused
+            ? `${s.free} עמדות של ${pool.label} פנויות, ו-${s.home} מהנציגים שלה עובדים מהבית`
+            : `${s.free} עמדות של ${pool.label} פנויות`
+      }
+    >
+      {label} <strong>{s.used}</strong>/{s.capacity}
+      {s.over > 0 ? ` · חריגה ${s.over}` : underused ? ` · ${s.free} פנויות` : ""}
+    </div>
   );
 }

@@ -50,8 +50,15 @@ import { setWeekStatusForTeamsAction, undoAction, weekToolForTeamsAction } from 
 import { BulkEditor } from "./bulk-editor";
 import { CellEditor, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
-import { DayHeader, HolidayTag, Legend, SeatsFooterRow } from "./schedule-board";
-import { hasSeatLimits, LocationSplit, SeatsLine } from "./seats-summary";
+import {
+  DayHeader,
+  HolidayTag,
+  Legend,
+  PoolLines,
+  PoolsFooterRows,
+  SeatsFooterRow,
+} from "./schedule-board";
+import { hasSeatLimits, LocationSplit, SeatsLine, type SeatPool } from "./seats-summary";
 
 type ViewAgent = WeekView["agents"][number];
 
@@ -69,6 +76,7 @@ export function AllTeamsBoard({
   selection,
   teams,
   activities,
+  pools,
 }: {
   views: WeekView[];
   catalog: Catalog;
@@ -80,6 +88,8 @@ export function AllTeamsBoard({
   selection: { value: string; label: string; isActivity: boolean };
   teams: GroupableTeam[];
   activities: Activity[];
+  /** Activities with their own seats among the teams shown. */
+  pools: SeatPool[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -533,6 +543,9 @@ export function AllTeamsBoard({
                   label={selection.isActivity ? "עמדות בכל המוקד" : "עמדות"}
                 />
               ) : null}
+              {hasSeatLimits(catalog.locations) ? (
+                <PoolsFooterRows days={days} dayInfo={dayInfo} pools={pools} catalog={catalog} />
+              ) : null}
             </tfoot>
           </table>
         </div>
@@ -591,6 +604,9 @@ export function AllTeamsBoard({
                 label={selection.isActivity ? "עמדות בכל המוקד בערב ·" : "עמדות בערב ·"}
                 locations={catalog.locations}
               />
+            ) : null}
+            {hasSeatLimits(catalog.locations) ? (
+              <PoolLines pools={pools} date={day} evening={eveningOn(day)} catalog={catalog} />
             ) : null}
           </Card>
         ) : null}

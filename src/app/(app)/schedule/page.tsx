@@ -7,9 +7,10 @@ import { formatDayMonth, isIsoDate, todayIso, weekStartOf } from "@/lib/dates";
 import { requireSessionUser } from "@/modules/auth/session";
 import { getCatalog } from "@/modules/catalog/service";
 import { canForTeam } from "@/modules/permissions/check";
-import { getWeekSeatUsage, getWeekView } from "@/modules/schedule/service";
+import { getWeekSeats, getWeekView } from "@/modules/schedule/service";
 import { listActivities, teamsForActor } from "@/modules/teams/service";
-import { resolveTeamSelection } from "@/modules/teams/types";
+import { resolveTeamSelection, type Activity } from "@/modules/teams/types";
+import type { SeatPool } from "./seats-summary";
 import { AllTeamsBoard } from "./all-teams-board";
 import { ScheduleBoard } from "./schedule-board";
 
@@ -48,13 +49,21 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
     redirect(`/schedule?team=${encodeURIComponent(selection.value)}&week=${weekStart}`);
   }
   const teamOptions = teams.map((t) => ({ id: t.id, name: t.name, activityId: t.activityId }));
+  // Activities with their own seats, as shown under the week.
+  const toPools = (list: Activity[], byActivity: Record<string, SeatPool["usage"]>): SeatPool[] =>
+    list
+      .filter((a) => a.seats)
+      .map((a) => ({ id: a.id, label: a.name, capacity: a.seats!, usage: byActivity[a.id] ?? {} }));
 
   if (selection.kind === "multi") {
-    const [views, catalog, seats] = await Promise.all([
+    const [views, catalog, weekSeats] = await Promise.all([
       Promise.all(selection.teams.map((t) => getWeekView(user, t.id, weekStart))),
       getCatalog(),
-      getWeekSeatUsage(user, weekStart),
+      getWeekSeats(user, weekStart),
     ]);
+    const shownActivities = selection.activity
+      ? [selection.activity]
+      : activities.filter((a) => selection.teams.some((t) => t.activityId === a.id));
     await logAccess(user, {
       action: "view",
       resource: "schedule",
@@ -64,7 +73,7 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
       <AllTeamsBoard
         views={views}
         catalog={catalog}
-        seats={seats}
+        seats={weekSeats.center}
         weekStart={weekStart}
         label={views[0].label}
         selection={{
@@ -74,15 +83,16 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
         }}
         teams={teamOptions}
         activities={activities}
+        pools={toPools(shownActivities, weekSeats.byActivity)}
       />
     );
   }
   const team = selection.team;
 
-  const [view, catalog, seats] = await Promise.all([
+  const [view, catalog, weekSeats] = await Promise.all([
     getWeekView(user, team.id, weekStart),
     getCatalog(),
-    getWeekSeatUsage(user, weekStart),
+    getWeekSeats(user, weekStart),
   ]);
   await logAccess(user, {
     action: "view",
@@ -98,7 +108,11 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
       teams={teamOptions}
       activities={activities}
       canViewAgents={canForTeam(user, "agents.view", team.id)}
-      seats={seats}
+      seats={weekSeats.center}
+      pools={toPools(
+        activities.filter((a) => a.id === team.activityId),
+        weekSeats.byActivity,
+      )}
     />
   );
 }

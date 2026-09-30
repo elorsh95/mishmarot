@@ -197,16 +197,21 @@ export async function ensureDefaultTeams(): Promise<Team[]> {
 
 export const listActivities = cache(async (): Promise<Activity[]> => {
   const snap = await col(COLLECTIONS.activities).get();
-  return snap.docs
-    .map((d) => fromDoc<Activity>(d))
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "he"));
+  return (
+    snap.docs
+      .map((d) => fromDoc<Activity>(d))
+      // Activities saved before seat counts existed have none.
+      .map((a) => ({ ...a, seats: a.seats ?? null }))
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "he"))
+  );
 });
 
 export const activityInputSchema = z.object({
   name: z.string().trim().min(2, "שם פעילות קצר מדי").max(40),
   sortOrder: z.coerce.number().int().default(0),
+  seats: z.coerce.number().int().min(1, "לפחות עמדה אחת").max(10000).nullable().default(null),
 });
-export type ActivityInput = z.infer<typeof activityInputSchema>;
+export type ActivityInput = z.input<typeof activityInputSchema>;
 
 export async function saveActivity(actor: Actor, activityId: string | null, input: ActivityInput) {
   assertCan(actor, "teams.manage");
@@ -258,17 +263,31 @@ export async function deleteActivity(actor: Actor, activityId: string) {
 
 /** The company's activities and their teams (by name). Digital belongs to none. */
 export const DEFAULT_ACTIVITIES = [
-  { name: "רכב חדש", teams: ["רנו", "ניסאן", "דאצ׳יה", "צ׳רי", "אקספנג"] },
-  { name: "פסיפיק", teams: ["ליסינג", "רכב משומש", "השכרה"] },
+  { name: "רכב חדש", seats: 18, teams: ["רנו", "ניסאן", "דאצ׳יה", "צ׳רי", "אקספנג"] },
+  { name: "פסיפיק", seats: 28, teams: ["ליסינג", "רכב משומש", "השכרה"] },
 ];
 
 /**
  * Creates the default activities when there are none yet, and puts the matching teams (by name)
  * that have no activity in them. Run after ensureDefaultTeams.
+ * Existing default activities saved before seat counts existed get the default count once;
+ * after that (a number or cleared) the admin's choice stands.
  */
 export async function ensureDefaultActivities(): Promise<void> {
-  const existing = await col(COLLECTIONS.activities).limit(1).get();
-  if (!existing.empty) return;
+  const existing = await col(COLLECTIONS.activities).get();
+  if (!existing.empty) {
+    const batch = db().batch();
+    let n = 0;
+    for (const d of existing.docs) {
+      const preset = DEFAULT_ACTIVITIES.find((a) => a.name === d.get("name"));
+      if (preset && d.get("seats") === undefined) {
+        batch.update(d.ref, { seats: preset.seats, updatedAt: serverNow() });
+        n += 1;
+      }
+    }
+    if (n > 0) await batch.commit();
+    return;
+  }
   const teams = await col(COLLECTIONS.teams).get();
   const batch = db().batch();
   DEFAULT_ACTIVITIES.forEach((activity, i) => {
@@ -276,6 +295,7 @@ export async function ensureDefaultActivities(): Promise<void> {
     batch.set(ref, {
       name: activity.name,
       sortOrder: i + 1,
+      seats: activity.seats,
       createdAt: serverNow(),
       updatedAt: serverNow(),
     });

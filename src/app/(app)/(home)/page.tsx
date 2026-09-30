@@ -34,10 +34,12 @@ import { weekCoverage } from "@/modules/dashboard/service";
 import type { WeekSummary } from "@/modules/dashboard/summary";
 import { requireSessionUser } from "@/modules/auth/session";
 import { can } from "@/modules/permissions/check";
-import { getWeek, listUpcomingRejected } from "@/modules/schedule/service";
+import { getCatalog } from "@/modules/catalog/service";
+import { getWeek, getWeekSeats, listUpcomingRejected } from "@/modules/schedule/service";
 import { listActivities, teamsForActor } from "@/modules/teams/service";
 import { activityValue, groupTeams } from "@/modules/teams/types";
 import { countIncomingTransfers } from "@/modules/transfers/service";
+import { SeatsSection, type SeatsPoolCard } from "./seats-section";
 
 export default async function DashboardPage() {
   const user = await requireSessionUser();
@@ -62,9 +64,44 @@ export default async function DashboardPage() {
       can(user, "attendance.view") ? getAttendanceDay(user, today) : null,
       listActivities(),
     ]);
+  const [weekSeats, catalog] =
+    teams.length > 0
+      ? await Promise.all([getWeekSeats(user, thisWeek), getCatalog()])
+      : [null, null];
   const groups = groupTeams(teams, activities);
   const grouped = groups.some((g) => g.activity !== null);
   const weekOf = new Map(weeks.map((w) => [w.team.id, w]));
+  // Office seats this week: each activity with its own seat count, then the whole center.
+  const officeSeats = (catalog?.locations ?? [])
+    .filter((l) => l.isActive && l.capacity)
+    .reduce((n, l) => n + (l.capacity ?? 0), 0);
+  const seatPools: SeatsPoolCard[] = weekSeats
+    ? [
+        ...activities
+          .filter((a) => a.seats)
+          .map((a) => ({
+            id: a.id,
+            label: a.name,
+            capacity: a.seats!,
+            usage: weekSeats.byActivity[a.id] ?? {},
+            href: teams.some((t) => t.activityId === a.id)
+              ? `/schedule?team=${encodeURIComponent(activityValue(a.id))}&week=${thisWeek}`
+              : `/schedule?week=${thisWeek}`,
+          })),
+        ...(officeSeats > 0
+          ? [
+              {
+                id: "center",
+                label: "כל המוקד",
+                capacity: officeSeats,
+                usage: weekSeats.center,
+                href: `/schedule?team=${teams.length > 1 ? "all" : teams[0].id}&week=${thisWeek}`,
+              },
+            ]
+          : []),
+      ]
+    : [];
+  const seatDays = teams.length > 0 ? (coverage[teams[0].id]?.days ?? []) : [];
   const gapDays = Object.values(coverage).reduce((n, c) => n + c.gaps, 0);
 
   return (
@@ -116,6 +153,15 @@ export default async function DashboardPage() {
           />
         ) : null}
       </div>
+
+      {catalog && seatDays.length > 0 ? (
+        <SeatsSection
+          pools={seatPools}
+          days={seatDays}
+          today={today}
+          locations={catalog.locations}
+        />
+      ) : null}
 
       {teams.length > 0 ? (
         <section id="teams" className="scroll-mt-4">

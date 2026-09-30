@@ -3,6 +3,8 @@ export interface Activity {
   id: string;
   name: string;
   sortOrder: number;
+  /** Office seats set aside for the activity's teams; null = no separate count. */
+  seats: number | null;
 }
 
 /** The minimum a team needs for grouping; `Team` satisfies it. */
