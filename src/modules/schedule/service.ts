@@ -486,3 +486,54 @@ export async function getWeekSeatUsage(actor: Actor, weekStartInput: IsoDate): P
     catalog.shifts,
   );
 }
+
+export type TeamsWeekTool = "copyPrevious" | "defaults" | "clear";
+
+/**
+ * Runs a week tool on several teams (the multi-team board), skipping teams the actor can't edit.
+ * One team at a time; the results are merged so the whole run can be undone together.
+ */
+export async function weekToolForTeams(
+  actor: Actor,
+  teamIds: string[],
+  weekStart: IsoDate,
+  tool: TeamsWeekTool,
+): Promise<ApplyResult> {
+  const run = { copyPrevious: copyPreviousWeek, defaults: fillFromDefaults, clear: clearWeek }[
+    tool
+  ];
+  const merged = noChanges();
+  for (const teamId of [...new Set(teamIds)]) {
+    if (!canForTeam(actor, "schedule.edit", teamId)) continue;
+    const r = await run(actor, teamId, weekStart);
+    merged.changed += r.changed;
+    merged.skipped.push(...r.skipped);
+    merged.pendingApprovalIds.push(...r.pendingApprovalIds);
+    merged.changes.push(...r.changes);
+  }
+  return merged;
+}
+
+/**
+ * Publishes (or returns to draft) several teams' week, skipping teams the actor can't publish,
+ * past weeks that are locked for them, and teams already in that status. Returns how many changed.
+ */
+export async function setWeekStatusForTeams(
+  actor: Actor,
+  teamIds: string[],
+  weekStartInput: IsoDate,
+  status: WeekStatus,
+): Promise<number> {
+  const weekStart = weekStartOf(weekStartInput);
+  const past = isPastWeek(weekStart, todayIso());
+  let changed = 0;
+  for (const teamId of [...new Set(teamIds)]) {
+    if (!canForTeam(actor, "schedule.publish", teamId)) continue;
+    if (past && !canForTeam(actor, "schedule.editLocked", teamId)) continue;
+    const current = await col(COLLECTIONS.weeks).doc(weekId(teamId, weekStart)).get();
+    if ((current.get("status") ?? "draft") === status) continue;
+    await setWeekStatus(actor, teamId, weekStart, status);
+    changed += 1;
+  }
+  return changed;
+}

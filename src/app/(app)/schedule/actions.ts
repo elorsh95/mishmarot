@@ -11,6 +11,8 @@ import {
   setDayEntry,
   setEntries,
   setWeekStatus,
+  setWeekStatusForTeams,
+  weekToolForTeams,
 } from "@/modules/schedule/service";
 import type { ApplyResult } from "@/modules/schedule/engine";
 import { applyProposal, proposeWeek } from "@/modules/autoschedule/service";
@@ -118,6 +120,58 @@ export async function clearWeekAction(teamId: string, weekStart: string) {
         summary: summarize(result, "הוסרו"),
         skipped: result.skipped,
         undoToken: await saveUndo(actor, result),
+      };
+    },
+    { revalidate: REVALIDATE },
+  );
+}
+
+const teamIdsSchema = z.array(z.string().min(1)).min(1, "לא נבחרו צוותים").max(50);
+const TOOL_VERBS = { copyPrevious: "הועתקו", defaults: "נוספו", clear: "הוסרו" } as const;
+
+/** A week tool (copy the previous week, fill defaults, clear) on every team of the board. */
+export async function weekToolForTeamsAction(teamIds: unknown, weekStart: string, tool: unknown) {
+  return runAction(
+    async (actor) => {
+      const parsed = z.enum(["copyPrevious", "defaults", "clear"]).parse(tool);
+      const result = await weekToolForTeams(
+        actor,
+        teamIdsSchema.parse(teamIds),
+        date.parse(weekStart),
+        parsed,
+      );
+      return {
+        summary:
+          result.changed === 0 && result.skipped.length === 0
+            ? "לא נמצאו ימים לעדכון"
+            : summarize(result, TOOL_VERBS[parsed]),
+        skipped: result.skipped,
+        undoToken: await saveUndo(actor, result),
+      };
+    },
+    { revalidate: REVALIDATE },
+  );
+}
+
+export async function setWeekStatusForTeamsAction(
+  teamIds: unknown,
+  weekStart: string,
+  status: unknown,
+) {
+  return runAction(
+    async (actor) => {
+      const parsed = z.enum(["draft", "published"]).parse(status);
+      const changed = await setWeekStatusForTeams(
+        actor,
+        teamIdsSchema.parse(teamIds),
+        date.parse(weekStart),
+        parsed,
+      );
+      return {
+        summary:
+          parsed === "published"
+            ? `פורסם הסידור של ${changed} צוותים`
+            : `הסידור של ${changed} צוותים הוחזר לטיוטה`,
       };
     },
     { revalidate: REVALIDATE },
