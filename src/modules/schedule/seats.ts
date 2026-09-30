@@ -73,3 +73,104 @@ export function homeCount(
     .filter((l) => l.requiresQuota)
     .reduce((n, l) => n + (usage[date]?.[half][l.id] ?? 0), 0);
 }
+
+/** Agents at the locations that have a seat count (the office) on one half of one day. */
+export function officeCount(
+  usage: SeatUsage,
+  date: IsoDate,
+  half: Half,
+  locations: Array<Pick<WorkLocation, "id" | "capacity" | "isActive">>,
+): number {
+  return locations
+    .filter((l) => l.isActive && l.capacity)
+    .reduce((n, l) => n + (usage[date]?.[half][l.id] ?? 0), 0);
+}
+
+/** Seat check for a group's own seats (an activity's share of the office) on one half day. */
+export interface PoolStatus {
+  used: number;
+  capacity: number;
+  over: number;
+  free: number;
+  /** The group's agents working from home at the same time. */
+  home: number;
+}
+
+export function poolStatus(
+  usage: SeatUsage,
+  date: IsoDate,
+  half: Half,
+  capacity: number,
+  locations: Array<Pick<WorkLocation, "id" | "capacity" | "isActive" | "requiresQuota">>,
+): PoolStatus {
+  const used = officeCount(usage, date, half, locations);
+  return {
+    used,
+    capacity,
+    over: Math.max(0, used - capacity),
+    free: Math.max(0, capacity - used),
+    home: homeCount(usage, date, half, locations),
+  };
+}
+
+/** Seat usage split by group (e.g. activity): `groupOf` maps an entry's team to its group. */
+export function seatUsageByGroup(
+  entries: Array<
+    Pick<Assignment, "teamId" | "date" | "kind" | "shiftId" | "locationId" | "quotaStatus">
+  >,
+  shifts: Array<Pick<Shift, "id" | "coversMorning" | "coversEvening">>,
+  groupOf: (teamId: string) => string | null,
+): Record<string, SeatUsage> {
+  const groups = new Map<string, typeof entries>();
+  for (const e of entries) {
+    const g = groupOf(e.teamId);
+    if (!g) continue;
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g)!.push(e);
+  }
+  return Object.fromEntries([...groups].map(([g, list]) => [g, seatUsage(list, shifts)]));
+}
+
+export interface PoolWeek {
+  days: Array<{ date: IsoDate; morning: PoolStatus | null; evening: PoolStatus | null }>;
+  /** Average share of the seats taken, over the halves that run (0-100). */
+  averagePct: number;
+  /** The most seats taken on any half day. */
+  peak: number;
+  /** Days with more agents in the office than seats. */
+  overDays: number;
+  /** Days with free seats while some of the group's agents work from home. */
+  underusedDays: number;
+}
+
+/** A group's seats over a week: each work day's morning and evening, and the week's totals. */
+export function poolWeek(
+  usage: SeatUsage,
+  days: Array<{ date: IsoDate; workable: boolean; eveningExpected: boolean }>,
+  capacity: number,
+  locations: Array<Pick<WorkLocation, "id" | "capacity" | "isActive" | "requiresQuota">>,
+): PoolWeek {
+  const out = days.map((d) => ({
+    date: d.date,
+    morning: d.workable ? poolStatus(usage, d.date, "morning", capacity, locations) : null,
+    evening:
+      d.workable && d.eveningExpected
+        ? poolStatus(usage, d.date, "evening", capacity, locations)
+        : null,
+  }));
+  const halves = out.flatMap((d) => [d.morning, d.evening]).filter((h): h is PoolStatus => !!h);
+  const halvesOf = (d: (typeof out)[number]) =>
+    [d.morning, d.evening].filter(Boolean) as PoolStatus[];
+  return {
+    days: out,
+    averagePct: halves.length
+      ? Math.round((halves.reduce((n, h) => n + h.used / capacity, 0) / halves.length) * 100)
+      : 0,
+    peak: halves.reduce((n, h) => Math.max(n, h.used), 0),
+    overDays: out.filter((d) => halvesOf(d).some((h) => h.over > 0)).length,
+    underusedDays: out.filter((d) => {
+      const hs = halvesOf(d);
+      return !hs.some((h) => h.over > 0) && hs.some((h) => h.free > 0 && h.home > 0);
+    }).length,
+  };
+}

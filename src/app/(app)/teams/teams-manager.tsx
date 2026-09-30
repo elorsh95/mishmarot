@@ -202,6 +202,11 @@ function ActivitiesCard({
                   className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-start text-sm hover:bg-muted"
                 >
                   <span className="font-medium">{a.name}</span>
+                  {a.seats ? (
+                    <span className="rounded-md bg-primary/10 px-1.5 text-xs font-medium text-primary">
+                      {a.seats} עמדות
+                    </span>
+                  ) : null}
                   <span className="text-xs text-fg-muted">
                     {members.length > 0 ? members.map((t) => t.name).join(", ") : "ללא צוותים"}
                   </span>
@@ -229,12 +234,18 @@ function ActivityDialog({
 }) {
   const [name, setName] = useState(activity?.name ?? "");
   const [sortOrder, setSortOrder] = useState(String(activity?.sortOrder ?? nextSortOrder));
+  const [seats, setSeats] = useState(activity?.seats ? String(activity.seats) : "");
   const { run, pending, error, fieldErrors } = useAction();
   const remove = useAction();
 
   function save() {
     run(
-      () => saveActivityAction(activity?.id ?? null, { name, sortOrder: Number(sortOrder) || 0 }),
+      () =>
+        saveActivityAction(activity?.id ?? null, {
+          name,
+          sortOrder: Number(sortOrder) || 0,
+          seats: seats.trim() === "" ? null : seats,
+        }),
       {
         onSuccess: onClose,
       },
@@ -284,6 +295,23 @@ function ActivityDialog({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="למשל: רכב חדש"
+          />
+        </Field>
+        <Field
+          label="עמדות במוקד"
+          htmlFor="activity-seats"
+          error={fieldErrors.seats}
+          hint="כמה עמדות במוקד שמורות לצוותים של הפעילות. בסידור ובמסך הראשי מוצג כמה מהן תפוסות בכל יום. ריק = בלי ספירה נפרדת."
+        >
+          <Input
+            id="activity-seats"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            value={seats}
+            onChange={(e) => setSeats(e.target.value)}
+            placeholder="למשל 18"
+            className="max-w-32"
           />
         </Field>
         <Field label="סדר תצוגה" htmlFor="activity-sort" error={fieldErrors.sortOrder}>

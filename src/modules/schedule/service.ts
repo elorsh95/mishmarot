@@ -32,11 +32,11 @@ import {
   type Actor,
 } from "@/modules/permissions/check";
 import { getSettings } from "@/modules/settings/service";
-import { getTeam, type Team } from "@/modules/teams/service";
+import { getTeam, listAllTeams, type Team } from "@/modules/teams/service";
 import { applyChanges, noChanges, type ApplyResult } from "./engine";
 import { countUsedQuotaDays, quotaPeriodField, quotaPeriodKey } from "./quota";
 import { isPastWeek } from "./rules";
-import { seatUsage, type SeatUsage } from "./seats";
+import { seatUsage, seatUsageByGroup, type SeatUsage } from "./seats";
 import {
   assignmentId,
   weekId,
@@ -475,16 +475,30 @@ export async function listUpcomingRejected(
  * Counts only (no names), so anyone who can view some schedule may see them.
  */
 export async function getWeekSeatUsage(actor: Actor, weekStartInput: IsoDate): Promise<SeatUsage> {
+  return (await getWeekSeats(actor, weekStartInput)).center;
+}
+
+/**
+ * The week's seat usage across the center and per activity (for the activities' own seats).
+ * Counts only, like getWeekSeatUsage.
+ */
+export async function getWeekSeats(
+  actor: Actor,
+  weekStartInput: IsoDate,
+): Promise<{ center: SeatUsage; byActivity: Record<string, SeatUsage> }> {
   assertCan(actor, "schedule.view");
   const weekStart = weekStartOf(weekStartInput);
-  const [catalog, snap] = await Promise.all([
+  const [catalog, snap, teams] = await Promise.all([
     getCatalog(),
     col(COLLECTIONS.assignments).where("weekStart", "==", weekStart).get(),
+    listAllTeams(),
   ]);
-  return seatUsage(
-    snap.docs.map((d) => fromDoc<Assignment>(d)),
-    catalog.shifts,
-  );
+  const entries = snap.docs.map((d) => fromDoc<Assignment>(d));
+  const activityOf = new Map(teams.map((t) => [t.id, t.activityId]));
+  return {
+    center: seatUsage(entries, catalog.shifts),
+    byActivity: seatUsageByGroup(entries, catalog.shifts, (id) => activityOf.get(id) ?? null),
+  };
 }
 
 export type TeamsWeekTool = "copyPrevious" | "defaults" | "clear";

@@ -10,8 +10,8 @@ import {
 } from "./types";
 
 const activities: Activity[] = [
-  { id: "pacific", name: "פסיפיק", sortOrder: 2 },
-  { id: "new", name: "רכב חדש", sortOrder: 1 },
+  { id: "pacific", name: "פסיפיק", sortOrder: 2, seats: 28 },
+  { id: "new", name: "רכב חדש", sortOrder: 1, seats: 18 },
 ].sort((a, b) => a.sortOrder - b.sortOrder);
 const teams = [
   { id: "renault", name: "רנו", activityId: "new" },
