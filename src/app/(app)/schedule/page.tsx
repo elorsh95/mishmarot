@@ -8,7 +8,8 @@ import { requireSessionUser } from "@/modules/auth/session";
 import { getCatalog } from "@/modules/catalog/service";
 import { canForTeam } from "@/modules/permissions/check";
 import { getWeekSeatUsage, getWeekView } from "@/modules/schedule/service";
-import { teamsForActor } from "@/modules/teams/service";
+import { listActivities, teamsForActor } from "@/modules/teams/service";
+import { resolveTeamSelection } from "@/modules/teams/types";
 import { AllTeamsBoard } from "./all-teams-board";
 import { ScheduleBoard } from "./schedule-board";
 
@@ -17,7 +18,10 @@ export const metadata: Metadata = { title: "סידור עבודה" };
 export default async function SchedulePage({ searchParams }: PageProps<"/schedule">) {
   const user = await requireSessionUser();
   const params = await searchParams;
-  const teams = await teamsForActor(user, "schedule.view");
+  const [teams, activities] = await Promise.all([
+    teamsForActor(user, "schedule.view"),
+    listActivities(),
+  ]);
   if (teams.length === 0) {
     return (
       <>
@@ -32,25 +36,29 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
     );
   }
 
-  const requestedTeam = typeof params.team === "string" ? params.team : undefined;
-  const allTeams = requestedTeam === "all" && teams.length > 1;
-  const team = teams.find((t) => t.id === requestedTeam) ?? teams[0];
+  // A team id, "all" or an activity ("act:<id>"); anything else opens the first team.
+  const selection = resolveTeamSelection(
+    typeof params.team === "string" ? params.team : undefined,
+    teams,
+    activities,
+  ) ?? { kind: "team" as const, value: teams[0].id, team: teams[0], label: teams[0].name };
   const weekParam = typeof params.week === "string" && isIsoDate(params.week) ? params.week : null;
   const weekStart = weekStartOf(weekParam ?? todayIso());
   if (weekParam && weekParam !== weekStart) {
-    redirect(`/schedule?team=${allTeams ? "all" : team.id}&week=${weekStart}`);
+    redirect(`/schedule?team=${encodeURIComponent(selection.value)}&week=${weekStart}`);
   }
+  const teamOptions = teams.map((t) => ({ id: t.id, name: t.name, activityId: t.activityId }));
 
-  if (allTeams) {
+  if (selection.kind === "multi") {
     const [views, catalog, seats] = await Promise.all([
-      Promise.all(teams.map((t) => getWeekView(user, t.id, weekStart))),
+      Promise.all(selection.teams.map((t) => getWeekView(user, t.id, weekStart))),
       getCatalog(),
       getWeekSeatUsage(user, weekStart),
     ]);
     await logAccess(user, {
       action: "view",
       resource: "schedule",
-      detail: `סידור עבודה · כל הצוותים · שבוע ${formatDayMonth(weekStart)}`,
+      detail: `סידור עבודה · ${selection.label} · שבוע ${formatDayMonth(weekStart)}`,
     });
     return (
       <AllTeamsBoard
@@ -59,9 +67,17 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
         seats={seats}
         weekStart={weekStart}
         label={views[0].label}
+        selection={{
+          value: selection.value,
+          label: selection.label,
+          isActivity: selection.activity !== null,
+        }}
+        teams={teamOptions}
+        activities={activities}
       />
     );
   }
+  const team = selection.team;
 
   const [view, catalog, seats] = await Promise.all([
     getWeekView(user, team.id, weekStart),
@@ -79,7 +95,8 @@ export default async function SchedulePage({ searchParams }: PageProps<"/schedul
     <ScheduleBoard
       view={view}
       catalog={catalog}
-      teams={teams.map((t) => ({ id: t.id, name: t.name }))}
+      teams={teamOptions}
+      activities={activities}
       canViewAgents={canForTeam(user, "agents.view", team.id)}
       seats={seats}
     />

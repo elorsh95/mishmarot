@@ -7,7 +7,8 @@ import { getBranding } from "@/modules/branding/service";
 import { logoUrl } from "@/modules/branding/types";
 import { getCatalog } from "@/modules/catalog/service";
 import { getWeekView } from "@/modules/schedule/service";
-import { teamsForActor } from "@/modules/teams/service";
+import { listActivities, teamsForActor } from "@/modules/teams/service";
+import { resolveTeamSelection, selectionTeamIds } from "@/modules/teams/types";
 import { PrintToolbar } from "./print-toolbar";
 import { WeekSheet } from "./week-sheet";
 
@@ -19,23 +20,39 @@ export async function generateMetadata({
   const user = await getSessionUser();
   if (!user) return { title: "ייצוא סידור עבודה" };
   const week = typeof params.week === "string" && isIsoDate(params.week) ? params.week : "";
-  if (params.team === "all") return { title: { absolute: `סידור עבודה - כל הצוותים ${week}` } };
-  const team = (await teamsForActor(user, "schedule.view")).find((t) => t.id === params.team);
-  return { title: { absolute: `סידור עבודה - ${team?.name ?? ""} ${week}`.trim() } };
+  const [teams, activities] = await Promise.all([
+    teamsForActor(user, "schedule.view"),
+    listActivities(),
+  ]);
+  const selection = resolveTeamSelection(
+    typeof params.team === "string" ? params.team : null,
+    teams,
+    activities,
+  );
+  return { title: { absolute: `סידור עבודה - ${selection?.label ?? ""} ${week}`.trim() } };
 }
 
 /**
  * Print-optimized weekly schedule (A4 landscape). The browser's "Save as PDF" produces the file,
  * which renders Hebrew/RTL correctly without a server-side PDF engine.
- * ?team=<id> for one team, ?team=all for every team the user can view (one page per team).
+ * ?team=<id> for one team, ?team=all for every team the user can view, ?team=act:<id> for an
+ * activity's teams (one page per team).
  */
 export default async function PrintSchedulePage({ searchParams }: PageProps<"/print/schedule">) {
   const user = await requireSessionUser();
   const params = await searchParams;
-  const teams = await teamsForActor(user, "schedule.view");
-  const teamParam = typeof params.team === "string" ? params.team : "";
-  const selected = teamParam === "all" ? teams : teams.filter((t) => t.id === teamParam);
-  if (selected.length === 0) notFound();
+  const [teams, activities] = await Promise.all([
+    teamsForActor(user, "schedule.view"),
+    listActivities(),
+  ]);
+  const selection = resolveTeamSelection(
+    typeof params.team === "string" ? params.team : null,
+    teams,
+    activities,
+  );
+  if (!selection) notFound();
+  const ids = selectionTeamIds(selection);
+  const selected = teams.filter((t) => ids.includes(t.id));
 
   const weekParam = typeof params.week === "string" && isIsoDate(params.week) ? params.week : null;
   const weekStart = weekStartOf(weekParam ?? todayIso());
@@ -49,8 +66,8 @@ export default async function PrintSchedulePage({ searchParams }: PageProps<"/pr
   await logAccess(user, {
     action: "export",
     resource: "schedule",
-    detail: `הדפסה/PDF של הסידור · ${teamParam === "all" ? "כל הצוותים" : selected[0].name} · שבוע ${formatDayMonth(weekStart)}`,
-    teamId: teamParam === "all" ? null : selected[0].id,
+    detail: `הדפסה/PDF של הסידור · ${selection.label} · שבוע ${formatDayMonth(weekStart)}`,
+    teamId: selection.kind === "team" ? selection.team.id : null,
   });
 
   return (

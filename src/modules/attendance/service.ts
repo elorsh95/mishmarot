@@ -35,7 +35,7 @@ import {
   type Actor,
 } from "@/modules/permissions/check";
 import { assignmentId, weekId, type Assignment, type WeekSchedule } from "@/modules/schedule/types";
-import { teamsForActor } from "@/modules/teams/service";
+import { listActivities, teamsForActor } from "@/modules/teams/service";
 import {
   currentShift,
   minutesOff,
@@ -84,7 +84,7 @@ export async function getAttendanceDay(actor: Actor, dateInput?: string): Promis
   const teamIds = new Set(teams.map((t) => t.id));
   const scope = teamScope(actor, "attendance.view");
 
-  const [catalog, statuses, dayInfos, assignmentsSnap, recordsSnap, weekSnaps, active] =
+  const [catalog, statuses, dayInfos, assignmentsSnap, recordsSnap, weekSnaps, active, activities] =
     await Promise.all([
       getCatalog(),
       listAttendanceStatuses(),
@@ -97,6 +97,7 @@ export async function getAttendanceDay(actor: Actor, dateInput?: string): Promis
           )
         : Promise.resolve([]),
       activeAgentsOf(scope === "all" ? "all" : [...teamIds]),
+      listActivities(),
     ]);
   const dayInfo = dayInfos[date];
 
@@ -213,9 +214,11 @@ export async function getAttendanceDay(actor: Actor, dateInput?: string): Promis
     teams: teams.map((t) => ({
       id: t.id,
       name: t.name,
+      activityId: t.activityId,
       published: published.has(t.id),
       canManage: canForTeam(actor, "attendance.manage", t.id),
     })),
+    activities,
     rows,
     absences,
     addable: active

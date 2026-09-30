@@ -7,17 +7,22 @@ import { getSessionUser } from "@/modules/auth/session";
 import { getCatalog } from "@/modules/catalog/service";
 import { weekScheduleXlsx } from "@/modules/reports/excel";
 import { getWeekView } from "@/modules/schedule/service";
-import { teamsForActor } from "@/modules/teams/service";
+import { listActivities, teamsForActor } from "@/modules/teams/service";
+import { resolveTeamSelection, selectionTeamIds } from "@/modules/teams/types";
 
-/** Weekly schedule as Excel: ?team=<id>|all&week=YYYY-MM-DD. One sheet per team. */
+/** Weekly schedule as Excel: ?team=<id>|all|act:<id>&week=YYYY-MM-DD. One sheet per team. */
 export async function GET(request: NextRequest) {
   const user = await getSessionUser();
   if (!user || user.mfaSetupRequired) return new Response(null, { status: 401 });
   const params = request.nextUrl.searchParams;
-  const teams = await teamsForActor(user, "schedule.view");
-  const teamParam = params.get("team") ?? "";
-  const selected = teamParam === "all" ? teams : teams.filter((t) => t.id === teamParam);
-  if (selected.length === 0) return new Response(null, { status: 404 });
+  const [teams, activities] = await Promise.all([
+    teamsForActor(user, "schedule.view"),
+    listActivities(),
+  ]);
+  const selection = resolveTeamSelection(params.get("team"), teams, activities);
+  if (!selection) return new Response(null, { status: 404 });
+  const ids = selectionTeamIds(selection);
+  const selected = teams.filter((t) => ids.includes(t.id));
   const weekParam = params.get("week") ?? "";
   const weekStart = weekStartOf(isIsoDate(weekParam) ? weekParam : todayIso());
 
@@ -25,12 +30,12 @@ export async function GET(request: NextRequest) {
     getCatalog(),
     Promise.all(selected.map((t) => getWeekView(user, t.id, weekStart))),
   ]);
-  const label = teamParam === "all" ? "כל הצוותים" : selected[0].name;
+  const label = selection.label;
   await logAccess(user, {
     action: "export",
     resource: "schedule",
     detail: `ייצוא הסידור לאקסל · ${label} · שבוע ${weekStart}`,
-    teamId: teamParam === "all" ? null : selected[0].id,
+    teamId: selection.kind === "team" ? selection.team.id : null,
   });
   return xlsxResponse(
     await weekScheduleXlsx(views, catalog, (await getLogo())?.bytes ?? null),

@@ -4,6 +4,7 @@ export type AuditEntityType =
   | "week"
   | "agent"
   | "team"
+  | "activity"
   | "user"
   | "role"
   | "shift"
@@ -39,6 +40,7 @@ export const AUDIT_ENTITY_LABELS: Record<AuditEntityType, string> = {
   week: "סידור שבועי",
   agent: "נציג",
   team: "צוות",
+  activity: "פעילות",
   user: "משתמש",
   role: "תפקיד",
   shift: "משמרת",

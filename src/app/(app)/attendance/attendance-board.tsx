@@ -16,6 +16,7 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
+import { TeamSelect } from "@/components/team-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,6 +35,7 @@ import {
   type AttendanceRow,
 } from "@/modules/attendance/types";
 import type { AttendanceStatus } from "@/modules/catalog/service";
+import { ALL_TEAMS, resolveTeamSelection, selectionTeamIds } from "@/modules/teams/types";
 import { clearAttendanceAction, recordAttendanceAction, recordManyAction } from "./actions";
 
 const ALL_SHIFTS: AttendanceDay["shifts"][number] = {
@@ -64,9 +66,13 @@ export function AttendanceBoard({
       ? initialShift!
       : (day.currentShiftId ?? "all"),
   );
-  const [teamId, setTeamId] = useState(
-    day.teams.some((t) => t.id === initialTeam) ? initialTeam! : "all",
+  // A team id, "all" or an activity ("act:<id>").
+  const [teamValue, setTeamValue] = useState(
+    resolveTeamSelection(initialTeam, day.teams, day.activities)?.value ?? ALL_TEAMS,
   );
+  const selection = resolveTeamSelection(teamValue, day.teams, day.activities);
+  const selectedTeams = selection ? new Set(selectionTeamIds(selection)) : null;
+  const inTeams = (teamId: string) => !selectedTeams || selectedTeams.has(teamId);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [editing, setEditing] = useState<{ row: AttendanceRow; statusId?: string } | null>(null);
@@ -85,9 +91,9 @@ export function AttendanceBoard({
   // Keep the chosen shift and team in the address, so a refresh or a shared link keeps them.
   useEffect(() => {
     const params = new URLSearchParams({ date: day.date, shift: shiftId });
-    if (teamId !== "all") params.set("team", teamId);
+    if (teamValue !== ALL_TEAMS) params.set("team", teamValue);
     window.history.replaceState(null, "", `/attendance?${params}`);
-  }, [day.date, shiftId, teamId]);
+  }, [day.date, shiftId, teamValue]);
 
   const statusById = useMemo(() => new Map(day.statuses.map((s) => [s.id, s])), [day.statuses]);
   const teamById = useMemo(() => new Map(day.teams.map((t) => [t.id, t])), [day.teams]);
@@ -95,8 +101,7 @@ export function AttendanceBoard({
   const locationById = useMemo(() => new Map(day.locations.map((l) => [l.id, l])), [day.locations]);
 
   const inView = day.rows.filter(
-    (r) =>
-      (shiftId === "all" || r.shiftId === shiftId) && (teamId === "all" || r.teamId === teamId),
+    (r) => (shiftId === "all" || r.shiftId === shiftId) && inTeams(r.teamId),
   );
   const summary = summarizeAttendance(inView, day.statuses);
   const q = query.trim();
@@ -120,7 +125,7 @@ export function AttendanceBoard({
     .map((t) => ({ team: t, rows: visible.filter((r) => r.teamId === t.id) }))
     .filter((g) => g.rows.length > 0);
   const drafts = day.teams.filter((t) => !t.published && inView.some((r) => r.teamId === t.id));
-  const absences = day.absences.filter((a) => teamId === "all" || a.teamId === teamId);
+  const absences = day.absences.filter((a) => inTeams(a.teamId));
 
   const readOnly = day.isFuture;
   const cameStatus = day.statuses.find((s) => s.presence === "present" && s.timeField === "none");
@@ -129,7 +134,7 @@ export function AttendanceBoard({
 
   const goToDate = (date: string) => {
     const params = new URLSearchParams({ date });
-    if (teamId !== "all") params.set("team", teamId);
+    if (teamValue !== ALL_TEAMS) params.set("team", teamValue);
     router.push(`/attendance?${params}`);
   };
 
@@ -168,19 +173,12 @@ export function AttendanceBoard({
           ) : null}
         </div>
         {day.teams.length > 1 ? (
-          <Select
-            aria-label="צוות"
-            value={teamId}
-            onChange={(e) => setTeamId(e.target.value)}
-            className="w-auto min-w-36"
-          >
-            <option value="all">כל הצוותים</option>
-            {day.teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </Select>
+          <TeamSelect
+            teams={day.teams}
+            activities={day.activities}
+            value={teamValue}
+            onChange={setTeamValue}
+          />
         ) : null}
         <div className="relative min-w-40 flex-1 sm:max-w-64">
           <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
@@ -206,9 +204,7 @@ export function AttendanceBoard({
           <div className="inline-flex min-w-max rounded-lg bg-muted p-1">
             {[ALL_SHIFTS, ...day.shifts].map((s) => {
               const count = day.rows.filter(
-                (r) =>
-                  (s.id === "all" || r.shiftId === s.id) &&
-                  (teamId === "all" || r.teamId === teamId),
+                (r) => (s.id === "all" || r.shiftId === s.id) && inTeams(r.teamId),
               ).length;
               return (
                 <button

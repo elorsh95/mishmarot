@@ -12,10 +12,11 @@ import {
   FileSpreadsheet,
   Search,
 } from "lucide-react";
+import { TeamSelect } from "@/components/team-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input, Select } from "@/components/ui/form";
+import { Input } from "@/components/ui/form";
 import { Menu, MenuItem } from "@/components/ui/menu";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
@@ -32,8 +33,9 @@ import { shiftRunsOn } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
 import type { WeekView } from "@/modules/schedule/service";
 import { quotaPeriodKey } from "@/modules/schedule/quota";
-import type { SeatUsage } from "@/modules/schedule/seats";
+import { seatUsage, type SeatUsage } from "@/modules/schedule/seats";
 import { assignmentId } from "@/modules/schedule/types";
+import type { Activity, GroupableTeam } from "@/modules/teams/types";
 import { CellEditor, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
 import { DayHeader, HolidayTag, Legend, SeatsFooterRow } from "./schedule-board";
@@ -42,8 +44,9 @@ import { hasSeatLimits, LocationSplit, SeatsLine } from "./seats-summary";
 type ViewAgent = WeekView["agents"][number];
 
 /**
- * Every team's week on one screen (mainly for the shift lead), with the center-wide totals per
- * day: agents on the morning and evening, where they work from, and the office seats.
+ * Several teams' week on one screen: every team (mainly for the shift lead) or one activity's
+ * teams. Per day: agents on the morning and evening and where they work from, for the teams shown,
+ * and the office seats across the whole center.
  */
 export function AllTeamsBoard({
   views,
@@ -51,19 +54,37 @@ export function AllTeamsBoard({
   seats,
   weekStart,
   label,
+  selection,
+  teams,
+  activities,
 }: {
   views: WeekView[];
   catalog: Catalog;
+  /** Seats taken across the whole center this week. */
   seats: SeatUsage;
   weekStart: string;
   label: string;
+  /** What is shown: "all" or an activity ("act:<id>"), with its Hebrew label. */
+  selection: { value: string; label: string; isActivity: boolean };
+  teams: GroupableTeam[];
+  activities: Activity[];
 }) {
   const router = useRouter();
   const toast = useToast();
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<{ view: WeekView; target: EditTarget } | null>(null);
-  const href = (team: string, week: string) => `/schedule?team=${team}&week=${week}`;
-  const go = (week: string) => router.push(href("all", week));
+  const href = (team: string, week: string) =>
+    `/schedule?team=${encodeURIComponent(team)}&week=${week}`;
+  const go = (week: string) => router.push(href(selection.value, week));
+  const param = encodeURIComponent(selection.value);
+  // Where the agents shown work from: the whole center, or only the activity's teams.
+  const shown = selection.isActivity
+    ? seatUsage(
+        views.flatMap((v) => Object.values(v.assignments)),
+        catalog.shifts,
+      )
+    : seats;
+  const totalsLabel = selection.isActivity ? `סה״כ ב${selection.label}` : "סה״כ בכל המוקד";
   const days = views[0]?.days ?? [];
   const dayInfo = views[0]?.dayInfo ?? {};
   const today = views[0]?.today ?? todayIso();
@@ -107,19 +128,13 @@ export function AllTeamsBoard({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-xl font-bold sm:text-2xl">סידור עבודה</h1>
-          <Select
-            aria-label="צוות"
-            value="all"
-            onChange={(e) => router.push(href(e.target.value, weekStart))}
-            className="h-9 w-auto min-w-36 font-medium"
-          >
-            {views.map((v) => (
-              <option key={v.team.id} value={v.team.id}>
-                {v.team.name}
-              </option>
-            ))}
-            <option value="all">כל הצוותים</option>
-          </Select>
+          <TeamSelect
+            teams={teams}
+            activities={activities}
+            value={selection.value}
+            onChange={(value) => router.push(href(value, weekStart))}
+            className="h-9 font-medium"
+          />
           <Badge tone={published === views.length ? "success" : "neutral"}>
             פורסמו {published} מתוך {views.length}
           </Badge>
@@ -166,7 +181,7 @@ export function AllTeamsBoard({
           <Menu label="ייצוא" icon={<Download className="h-4 w-4" />}>
             <MenuItem
               icon={<FileDown className="h-4 w-4" />}
-              href={`/print/schedule?team=all&week=${weekStart}`}
+              href={`/print/schedule?team=${param}&week=${weekStart}`}
               newTab
               hint="עמוד לכל צוות"
             >
@@ -174,7 +189,7 @@ export function AllTeamsBoard({
             </MenuItem>
             <MenuItem
               icon={<FileSpreadsheet className="h-4 w-4" />}
-              href={`/schedule/export?team=all&week=${weekStart}`}
+              href={`/schedule/export?team=${param}&week=${weekStart}`}
               hint="גיליון לכל צוות"
             >
               Excel
@@ -279,7 +294,7 @@ export function AllTeamsBoard({
             <tfoot className="sticky bottom-0 z-20">
               <tr className="bg-muted">
                 <th className="sticky start-0 z-10 border-t border-e border-border bg-muted px-3 py-2 text-start text-xs font-semibold text-fg-muted">
-                  סה״כ בכל המוקד
+                  {totalsLabel}
                 </th>
                 {days.map((date) => {
                   const t = totals(date);
@@ -292,7 +307,7 @@ export function AllTeamsBoard({
                         בוקר: <strong className="text-fg">{t.morning}</strong>
                       </div>
                       <LocationSplit
-                        usage={seats}
+                        usage={shown}
                         date={date}
                         half="morning"
                         locations={catalog.locations}
@@ -303,7 +318,7 @@ export function AllTeamsBoard({
                             ערב: <strong className="text-fg">{t.evening}</strong>
                           </div>
                           <LocationSplit
-                            usage={seats}
+                            usage={shown}
                             date={date}
                             half="evening"
                             locations={catalog.locations}
@@ -321,7 +336,7 @@ export function AllTeamsBoard({
                   dayInfo={dayInfo}
                   seats={seats}
                   catalog={catalog}
-                  label="עמדות"
+                  label={selection.isActivity ? "עמדות בכל המוקד" : "עמדות"}
                 />
               ) : null}
             </tfoot>
@@ -354,6 +369,9 @@ export function AllTeamsBoard({
         <HolidayTag info={dayInfo[day]} />
         {day ? (
           <Card className="space-y-1 p-3 text-xs text-fg-muted">
+            {selection.isActivity ? (
+              <div className="font-semibold text-fg">{totalsLabel}</div>
+            ) : null}
             <div>
               בוקר: <strong className="text-fg">{totals(day).morning}</strong>
               {eveningOn(day) ? (
@@ -363,12 +381,12 @@ export function AllTeamsBoard({
                 </>
               ) : null}
             </div>
-            <LocationSplit usage={seats} date={day} half="morning" locations={catalog.locations} />
+            <LocationSplit usage={shown} date={day} half="morning" locations={catalog.locations} />
             <SeatsLine
               usage={seats}
               date={day}
               half="morning"
-              label="עמדות בבוקר ·"
+              label={selection.isActivity ? "עמדות בכל המוקד בבוקר ·" : "עמדות בבוקר ·"}
               locations={catalog.locations}
             />
             {eveningOn(day) ? (
@@ -376,7 +394,7 @@ export function AllTeamsBoard({
                 usage={seats}
                 date={day}
                 half="evening"
-                label="עמדות בערב ·"
+                label={selection.isActivity ? "עמדות בכל המוקד בערב ·" : "עמדות בערב ·"}
                 locations={catalog.locations}
               />
             ) : null}

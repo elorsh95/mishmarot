@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { beforeEach, describe, expect, it } from "vitest";
+import { col, COLLECTIONS } from "@/lib/firebase/collections";
 import { getCatalog } from "@/modules/catalog/service";
 import { getWeekView, setDayEntry } from "@/modules/schedule/service";
 import { actors, baseData, clearEmulator, createAgentDoc, createTeamDoc } from "@/test/helpers";
@@ -53,6 +54,18 @@ describe("schedule report", () => {
     });
     await setDayEntry(admin, "a1", "2030-04-01", office()); // another month
     await setDayEntry(admin, "a3", "2030-03-03", office()); // another team
+  });
+
+  it("reports an activity's teams, within the actor's teams", async () => {
+    await col(COLLECTIONS.activities).doc("new").set({ name: "רכב חדש", sortOrder: 1 });
+    await col(COLLECTIONS.teams).doc("renault").update({ activityId: "new" });
+    await col(COLLECTIONS.teams).doc("nissan").update({ activityId: "new" });
+    const report = await scheduleReport(actors.admin(), march, "act:new");
+    expect(report.teamName).toBe("רכב חדש");
+    expect(report.rows.map((r) => r.agentId).sort()).toEqual(["a1", "a2", "a3"]);
+    // A team manager of one of them sees only that team.
+    const tm = await scheduleReport(actors.teamManager(["renault"]), march, "act:new");
+    expect(tm.rows.map((r) => r.agentId).sort()).toEqual(["a1", "a2"]);
   });
 
   it("sums each agent's month within the actor's teams", async () => {
