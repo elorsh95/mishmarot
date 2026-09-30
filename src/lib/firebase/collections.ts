@@ -12,6 +12,7 @@ export const COLLECTIONS = {
   roles: "roles",
   users: "users",
   teams: "teams",
+  activities: "activities",
   agents: "agents",
   shifts: "shifts",
   locations: "locations",

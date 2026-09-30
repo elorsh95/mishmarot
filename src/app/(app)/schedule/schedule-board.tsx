@@ -22,11 +22,11 @@ import {
   Wand2,
   X,
 } from "lucide-react";
+import { TeamSelect } from "@/components/team-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
-import { Select } from "@/components/ui/form";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "@/components/ui/menu";
 import { EmptyState } from "@/components/ui/page-header";
 import { useToast } from "@/components/ui/toast";
@@ -49,6 +49,7 @@ import type { WeekView } from "@/modules/schedule/service";
 import { quotaPeriodKey } from "@/modules/schedule/quota";
 import { seatUsage, type SeatUsage } from "@/modules/schedule/seats";
 import { assignmentId, type Assignment } from "@/modules/schedule/types";
+import { activityValue, type Activity, type GroupableTeam } from "@/modules/teams/types";
 import {
   clearWeekAction,
   copyPreviousWeekAction,
@@ -70,12 +71,14 @@ export function ScheduleBoard({
   view,
   catalog,
   teams,
+  activities,
   canViewAgents,
   seats,
 }: {
   view: WeekView;
   catalog: Catalog;
-  teams: Array<{ id: string; name: string }>;
+  teams: GroupableTeam[];
+  activities: Activity[];
   canViewAgents: boolean;
   /** Seats taken across the whole center this week. */
   seats: SeatUsage;
@@ -104,7 +107,12 @@ export function ScheduleBoard({
   const toast = useToast();
 
   const editable = view.lockReason === null;
-  const href = (teamId: string, weekStart: string) => `/schedule?team=${teamId}&week=${weekStart}`;
+  const href = (teamId: string, weekStart: string) =>
+    `/schedule?team=${encodeURIComponent(teamId)}&week=${weekStart}`;
+  // The team's activity, when the user sees other teams in it too (for the activity's exports).
+  const activityId = teams.find((t) => t.id === view.team.id)?.activityId;
+  const activity = activities.find((a) => a.id === activityId);
+  const activityTeams = activity ? teams.filter((t) => t.activityId === activity.id).length : 0;
   const go = (weekStart: string) => router.push(href(view.team.id, weekStart));
   const entryOf = (agentId: string, date: string) =>
     view.assignments[assignmentId(agentId, date)] ?? null;
@@ -236,6 +244,27 @@ export function ScheduleBoard({
       >
         Excel
       </MenuItem>
+      {activity && activityTeams > 1 ? (
+        <>
+          <MenuSeparator />
+          <MenuLabel>כל {activity.name}</MenuLabel>
+          <MenuItem
+            icon={<FileDown className="h-4 w-4" />}
+            href={`/print/schedule?team=${activityValue(activity.id)}&week=${view.weekStart}`}
+            newTab
+            hint="עמוד לכל צוות"
+          >
+            PDF
+          </MenuItem>
+          <MenuItem
+            icon={<FileSpreadsheet className="h-4 w-4" />}
+            href={`/schedule/export?team=${activityValue(activity.id)}&week=${view.weekStart}`}
+            hint="גיליון לכל צוות"
+          >
+            Excel
+          </MenuItem>
+        </>
+      ) : null}
       {teams.length > 1 ? (
         <>
           <MenuSeparator />
@@ -280,19 +309,13 @@ export function ScheduleBoard({
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-xl font-bold sm:text-2xl">סידור עבודה</h1>
           {teams.length > 1 ? (
-            <Select
-              aria-label="צוות"
+            <TeamSelect
+              teams={teams}
+              activities={activities}
               value={view.team.id}
-              onChange={(e) => router.push(href(e.target.value, view.weekStart))}
-              className="h-9 w-auto min-w-36 font-medium"
-            >
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-              <option value="all">כל הצוותים</option>
-            </Select>
+              onChange={(value) => router.push(href(value, view.weekStart))}
+              className="h-9 font-medium"
+            />
           ) : (
             <Badge tone="primary" className="text-sm">
               {view.team.name}

@@ -4,8 +4,10 @@ import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, FileDown } from "lucide-react";
 import { Button, Spinner } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/form";
+import { TeamSelect } from "@/components/team-select";
+import { Input } from "@/components/ui/form";
 import { cn } from "@/lib/cn";
+import { ALL_TEAMS, type Activity, type GroupableTeam } from "@/modules/teams/types";
 import { todayIso } from "@/lib/dates";
 import {
   presetRange,
@@ -58,13 +60,16 @@ function Segmented<T extends string>({
 export function ReportFilters({
   range,
   view,
-  teamId,
+  team,
   teams,
+  activities,
 }: {
   range: ReportRange;
   view: ReportView;
-  teamId: string;
-  teams: Array<{ id: string; name: string }>;
+  /** A team id, an activity ("act:<id>") or "" for every team. */
+  team: string;
+  teams: GroupableTeam[];
+  activities: Activity[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -72,8 +77,8 @@ export function ReportFilters({
 
   const query = (next: { range?: ReportRange; team?: string; view?: ReportView }) => {
     const params = new URLSearchParams(reportRangeParams(next.range ?? range));
-    const team = next.team ?? teamId;
-    if (team) params.set("team", team);
+    const selected = next.team ?? team;
+    if (selected && selected !== ALL_TEAMS) params.set("team", selected);
     const v = next.view ?? view;
     if (v !== "agents") params.set("view", v);
     return params.toString();
@@ -127,19 +132,13 @@ export function ReportFilters({
           <PresetStepper range={range} period={range.period} onChange={(r) => go({ range: r })} />
         )}
         {teams.length > 1 ? (
-          <Select
-            aria-label="צוות"
-            value={teamId}
-            onChange={(e) => go({ team: e.target.value })}
-            className="h-10 w-auto min-w-40"
-          >
-            <option value="">כל הצוותים</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </Select>
+          <TeamSelect
+            teams={teams}
+            activities={activities}
+            value={team || ALL_TEAMS}
+            onChange={(value) => go({ team: value })}
+            className="h-10 min-w-40"
+          />
         ) : null}
         {pending ? <Spinner className="text-fg-muted" /> : null}
         <a

@@ -8,6 +8,7 @@ import { can } from "@/modules/permissions/check";
 import { reportXlsx } from "@/modules/reports/excel";
 import { parseReportRange, reportRangeLabel } from "@/modules/reports/period";
 import { scheduleReport } from "@/modules/reports/service";
+import { isTeamValue } from "@/modules/teams/types";
 
 /** The report as Excel, with the page's params: period/date or from/to, team, view. */
 export async function GET(request: NextRequest) {
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
     action: "export",
     resource: "reports",
     detail: `ייצוא ${title} לאקסל · ${report.teamName ?? "כל הצוותים"} · ${label}`,
-    teamId: params.team || null,
+    teamId: isTeamValue(params.team) ? params.team : null,
   });
   return xlsxResponse(
     await reportXlsx(report, view, (await getLogo())?.bytes ?? null),

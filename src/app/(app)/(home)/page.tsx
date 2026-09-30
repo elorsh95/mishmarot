@@ -35,7 +35,8 @@ import type { WeekSummary } from "@/modules/dashboard/summary";
 import { requireSessionUser } from "@/modules/auth/session";
 import { can } from "@/modules/permissions/check";
 import { getWeek, listUpcomingRejected } from "@/modules/schedule/service";
-import { teamsForActor } from "@/modules/teams/service";
+import { listActivities, teamsForActor } from "@/modules/teams/service";
+import { activityValue, groupTeams } from "@/modules/teams/types";
 import { countIncomingTransfers } from "@/modules/transfers/service";
 
 export default async function DashboardPage() {
@@ -45,20 +46,25 @@ export default async function DashboardPage() {
   const nextWeek = addDays(thisWeek, 7);
 
   const teams = can(user, "schedule.view") ? await teamsForActor(user, "schedule.view") : [];
-  const [approvals, transfers, weeks, rejected, coverage, attendance] = await Promise.all([
-    can(user, "approvals.view") ? countPendingApprovals(user) : null,
-    can(user, "transfers.decide") ? countIncomingTransfers(user) : 0,
-    Promise.all(
-      teams.map(async (t) => ({
-        team: t,
-        current: await getWeek(t.id, thisWeek),
-        next: await getWeek(t.id, nextWeek),
-      })),
-    ),
-    listUpcomingRejected(user, today),
-    weekCoverage(user, teams, thisWeek),
-    can(user, "attendance.view") ? getAttendanceDay(user, today) : null,
-  ]);
+  const [approvals, transfers, weeks, rejected, coverage, attendance, activities] =
+    await Promise.all([
+      can(user, "approvals.view") ? countPendingApprovals(user) : null,
+      can(user, "transfers.decide") ? countIncomingTransfers(user) : 0,
+      Promise.all(
+        teams.map(async (t) => ({
+          team: t,
+          current: await getWeek(t.id, thisWeek),
+          next: await getWeek(t.id, nextWeek),
+        })),
+      ),
+      listUpcomingRejected(user, today),
+      weekCoverage(user, teams, thisWeek),
+      can(user, "attendance.view") ? getAttendanceDay(user, today) : null,
+      listActivities(),
+    ]);
+  const groups = groupTeams(teams, activities);
+  const grouped = groups.some((g) => g.activity !== null);
+  const weekOf = new Map(weeks.map((w) => [w.team.id, w]));
   const gapDays = Object.values(coverage).reduce((n, c) => n + c.gaps, 0);
 
   return (
@@ -119,18 +125,42 @@ export default async function DashboardPage() {
               {formatWeekRange(thisWeek)} · בכל יום: בוקר / ערב
             </span>
           </div>
-          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-            {weeks.map(({ team, current, next }) => (
-              <TeamCard
-                key={team.id}
-                team={team}
-                published={current.status === "published"}
-                nextPublished={next.status === "published"}
-                summary={coverage[team.id]}
-                today={today}
-                thisWeek={thisWeek}
-                nextWeek={nextWeek}
-              />
+          <div className="space-y-5">
+            {groups.map((g) => (
+              <div key={g.activity?.id ?? "none"}>
+                {grouped ? (
+                  <div className="mb-2 flex items-baseline justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-fg-muted">
+                      {g.activity?.name ?? "ללא פעילות"}
+                    </h3>
+                    {g.activity && g.teams.length > 1 ? (
+                      <Link
+                        href={`/schedule?team=${encodeURIComponent(activityValue(g.activity.id))}&week=${thisWeek}`}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        הסידור של כל {g.activity.name}
+                      </Link>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                  {g.teams.map((team) => {
+                    const week = weekOf.get(team.id)!;
+                    return (
+                      <TeamCard
+                        key={team.id}
+                        team={team}
+                        published={week.current.status === "published"}
+                        nextPublished={week.next.status === "published"}
+                        summary={coverage[team.id]}
+                        today={today}
+                        thisWeek={thisWeek}
+                        nextWeek={nextWeek}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </div>
         </section>

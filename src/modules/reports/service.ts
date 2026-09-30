@@ -6,7 +6,8 @@ import { getCatalog } from "@/modules/catalog/service";
 import { teamScope, type Actor } from "@/modules/permissions/check";
 import type { Assignment } from "@/modules/schedule/types";
 import { getSettings } from "@/modules/settings/service";
-import { listAllTeams } from "@/modules/teams/service";
+import { listActivities, listAllTeams } from "@/modules/teams/service";
+import { ALL_TEAMS, resolveTeamSelection, selectionTeamIds } from "@/modules/teams/types";
 import { aggregateAgents, aggregateShifts } from "./aggregate";
 import type { ReportRange } from "./period";
 import type { Report } from "./types";
@@ -15,21 +16,27 @@ import type { Report } from "./types";
  * Summary of a date range for the teams the actor can view (schedule.view): per agent and per shift.
  * Entries count toward the team they were scheduled in, so an agent who moved teams during the
  * range appears in each team with that team's days. Active agents with no entries are listed too.
+ * `team` is a team id, an activity ("act:<id>") or null / "all" for every team; one the actor
+ * can't view gives an empty report.
  */
 export async function scheduleReport(
   actor: Actor,
   range: ReportRange,
-  teamId: string | null,
+  team: string | null,
 ): Promise<Report> {
   const scope = teamScope(actor, "schedule.view");
-  const teams = (await listAllTeams()).filter((t) => scope === "all" || scope.includes(t.id));
-  const selected = teamId ? teams.filter((t) => t.id === teamId) : teams;
+  const [allTeams, activities] = await Promise.all([listAllTeams(), listActivities()]);
+  const teams = allTeams.filter((t) => scope === "all" || scope.includes(t.id));
+  const multi = !team || team === ALL_TEAMS;
+  const selection = multi ? null : resolveTeamSelection(team, teams, activities);
+  const ids = selection ? selectionTeamIds(selection) : [];
+  const selected = multi ? teams : teams.filter((t) => ids.includes(t.id));
   const [catalog, settings] = await Promise.all([getCatalog(), getSettings()]);
   const shifts = catalog.shifts.map((s) => ({ id: s.id, name: s.name }));
   const absences = catalog.absenceTypes.map((a) => ({ id: a.id, name: a.name }));
   const empty: Report = {
     range,
-    teamName: teamId ? (selected[0]?.name ?? null) : null,
+    teamName: selection?.label ?? null,
     quotaPeriod: settings.quotaPeriod,
     shifts,
     absences,

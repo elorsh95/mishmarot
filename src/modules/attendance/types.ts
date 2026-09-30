@@ -1,5 +1,6 @@
 import { clockMinutes, type ClockTime, type IsoDate } from "@/lib/dates";
 import type { AttendanceStatus, Shift } from "@/modules/catalog/service";
+import type { Activity } from "@/modules/teams/types";
 
 /** What was marked for an agent on a day: `${agentId}_${date}`, one per agent per day. */
 export interface AttendanceRecord {
@@ -54,7 +55,15 @@ export interface AttendanceDay {
   currentShiftId: string | null;
   statuses: AttendanceStatus[];
   locations: Array<{ id: string; name: string; color: string }>;
-  teams: Array<{ id: string; name: string; published: boolean; canManage: boolean }>;
+  teams: Array<{
+    id: string;
+    name: string;
+    activityId: string | null;
+    published: boolean;
+    canManage: boolean;
+  }>;
+  /** For grouping and filtering the teams by activity. */
+  activities: Activity[];
   rows: AttendanceRow[];
   /** Planned absences (vacation, sick…), for reference. */
   absences: Array<{ agentId: string; name: string; teamId: string; absenceName: string }>;
