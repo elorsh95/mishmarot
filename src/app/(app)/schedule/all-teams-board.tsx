@@ -4,21 +4,30 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
+  CheckSquare,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Download,
+  Eraser,
   ExternalLink,
   FileDown,
   FileSpreadsheet,
   Search,
+  Send,
+  Undo2,
+  Wand2,
+  X,
 } from "lucide-react";
 import { TeamSelect } from "@/components/team-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/form";
-import { Menu, MenuItem } from "@/components/ui/menu";
+import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { useToast } from "@/components/ui/toast";
+import { useAction } from "@/components/ui/use-action";
 import { cn } from "@/lib/cn";
 import {
   addDays,
@@ -31,11 +40,14 @@ import {
 import { agentName } from "@/modules/agents/types";
 import { shiftRunsOn } from "@/modules/calendar/types";
 import type { Catalog } from "@/modules/catalog/service";
+import type { SkippedOp } from "@/modules/schedule/engine";
 import type { WeekView } from "@/modules/schedule/service";
 import { quotaPeriodKey } from "@/modules/schedule/quota";
 import { seatUsage, type SeatUsage } from "@/modules/schedule/seats";
 import { assignmentId } from "@/modules/schedule/types";
 import type { Activity, GroupableTeam } from "@/modules/teams/types";
+import { setWeekStatusForTeamsAction, undoAction, weekToolForTeamsAction } from "./actions";
+import { BulkEditor } from "./bulk-editor";
 import { CellEditor, type EditTarget } from "./cell-editor";
 import { EntryChip } from "./entry-chip";
 import { DayHeader, HolidayTag, Legend, SeatsFooterRow } from "./schedule-board";
@@ -92,7 +104,85 @@ export function AllTeamsBoard({
   const matches = (a: ViewAgent) => !q || agentName(a).includes(q) || a.employeeNumber.includes(q);
   const published = views.filter((v) => v.week.status === "published").length;
 
+  // Tools for several teams at once: only the teams the user can edit (or publish) this week.
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkEditing, setBulkEditing] = useState(false);
+  const [skipped, setSkipped] = useState<SkippedOp[] | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const bulk = useAction();
+  const editableTeams = views.filter((v) => v.lockReason === null).map((v) => v.team.id);
+  const publishable = views.filter((v) => v.canPublish && (!v.isPast || v.canEditLocked));
+  const drafts = publishable.filter((v) => v.week.status === "draft");
+  const cellKey = (agentId: string, date: string) => `${agentId}|${date}`;
+  const selectable = (view: WeekView, agent: ViewAgent, date: string) =>
+    view.lockReason === null && agent.isActive && agent.inTeam && dayInfo[date]?.kind !== "closed";
+  function toggleCells(keys: string[]) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const all = keys.length > 0 && keys.every((k) => next.has(k));
+      for (const k of keys) {
+        if (all) next.delete(k);
+        else next.add(k);
+      }
+      return next;
+    });
+  }
+  const toggleDay = (date: string) =>
+    toggleCells(
+      views.flatMap((v) =>
+        v.agents
+          .filter((a) => matches(a) && selectable(v, a, date))
+          .map((a) => cellKey(a.id, date)),
+      ),
+    );
+  const toggleAgent = (view: WeekView, agent: ViewAgent) =>
+    toggleCells(days.filter((d) => selectable(view, agent, d)).map((d) => cellKey(agent.id, d)));
+  const selectedCells = [...selected].map((k) => {
+    const [agentId, date] = k.split("|");
+    return { agentId, date };
+  });
+  function endSelection() {
+    setSelecting(false);
+    setSelected(new Set());
+  }
+  function showResult(data: { summary: string; skipped: SkippedOp[]; undoToken?: string | null }) {
+    const token = data.undoToken;
+    toast.success(
+      data.summary,
+      token
+        ? {
+            action: {
+              label: "ביטול",
+              onClick: () => bulk.run(() => undoAction(token), { onSuccess: showResult }),
+            },
+          }
+        : undefined,
+    );
+    if (data.skipped.length > 0) setSkipped(data.skipped);
+  }
+  const runTool = (tool: "copyPrevious" | "defaults" | "clear") =>
+    bulk.run(() => weekToolForTeamsAction(editableTeams, weekStart, tool), {
+      onSuccess: showResult,
+    });
+  const setStatus = (status: "published" | "draft") =>
+    bulk.run(
+      () =>
+        setWeekStatusForTeamsAction(
+          publishable.map((v) => v.team.id),
+          weekStart,
+          status,
+        ),
+      { onSuccess: (data) => toast.success(data.summary) },
+    );
+  const agentById = new Map(views.flatMap((v) => v.agents.map((a) => [a.id, a])));
+  const teamCount = (n: number) => (n === 1 ? "צוות אחד" : `${n} צוותים`);
+
   function open(view: WeekView, agent: ViewAgent, date: string) {
+    if (selecting) {
+      if (selectable(view, agent, date)) toggleCells([cellKey(agent.id, date)]);
+      return;
+    }
     const entry = view.assignments[assignmentId(agent.id, date)] ?? null;
     const editable = view.lockReason === null && agent.isActive && agent.inTeam;
     if (!entry && (!editable || dayInfo[date]?.kind === "closed")) return;
@@ -177,7 +267,50 @@ export function AllTeamsBoard({
             className="h-9 ps-9"
           />
         </div>
-        <div className="ms-auto">
+        {editableTeams.length > 0 ? (
+          <>
+            <Menu
+              label="כלי שיבוץ"
+              icon={<Wand2 className="h-4 w-4" />}
+              align="start"
+              disabled={bulk.pending}
+            >
+              <MenuItem
+                icon={<Copy className="h-4 w-4" />}
+                onClick={() => runTool("copyPrevious")}
+                hint={`ממלא ימים ריקים לפי השבוע הקודם · ${teamCount(editableTeams.length)}`}
+              >
+                העתקה משבוע קודם
+              </MenuItem>
+              <MenuItem
+                icon={<Wand2 className="h-4 w-4" />}
+                onClick={() => runTool("defaults")}
+                hint={`לפי המשמרת, המיקום וימי העבודה הקבועים · ${teamCount(editableTeams.length)}`}
+              >
+                מילוי לפי ברירת מחדל
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem
+                icon={<Eraser className="h-4 w-4" />}
+                tone="danger"
+                onClick={() => setConfirmClear(true)}
+                hint={`מחיקת כל השיבוצים של השבוע · ${teamCount(editableTeams.length)}`}
+              >
+                ניקוי השבוע
+              </MenuItem>
+            </Menu>
+            <Button
+              variant={selecting ? "primary" : "secondary"}
+              size="sm"
+              onClick={() => (selecting ? endSelection() : setSelecting(true))}
+              title="בחירת כמה נציגים או ימים, גם מצוותים שונים, ושיבוץ של כולם יחד"
+            >
+              <CheckSquare className="h-4 w-4" />
+              {selecting ? "סיום בחירה" : "בחירה מרובה"}
+            </Button>
+          </>
+        ) : null}
+        <div className="ms-auto flex flex-wrap items-center gap-2">
           <Menu label="ייצוא" icon={<Download className="h-4 w-4" />}>
             <MenuItem
               icon={<FileDown className="h-4 w-4" />}
@@ -195,8 +328,39 @@ export function AllTeamsBoard({
               Excel
             </MenuItem>
           </Menu>
+          {publishable.length > 0 ? (
+            drafts.length > 0 ? (
+              <Button
+                size="sm"
+                variant="success"
+                loading={bulk.pending}
+                onClick={() => setStatus("published")}
+                title={`פרסום הסידור של ${teamCount(drafts.length)} שעדיין בטיוטה`}
+              >
+                <Send className="h-4 w-4" />
+                פרסום ({drafts.length})
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={bulk.pending}
+                onClick={() => setStatus("draft")}
+              >
+                <Undo2 className="h-4 w-4" />
+                החזרה לטיוטה
+              </Button>
+            )
+          ) : null}
         </div>
       </div>
+
+      {selecting ? (
+        <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-primary">
+          לחצו על משבצות כדי לבחור אותן, גם מצוותים שונים. לחיצה על יום בכותרת בוחרת את כל הנציגים
+          באותו יום, ולחיצה על שם נציג בוחרת את כל השבוע שלו. צוותים שהסידור שלהם נעול לא נבחרים.
+        </p>
+      ) : null}
 
       {/* Desktop: one table, a section per team */}
       <Card className="hidden overflow-hidden md:block">
@@ -215,7 +379,18 @@ export function AllTeamsBoard({
                       d === today ? "bg-primary/10" : "bg-muted",
                     )}
                   >
-                    <DayHeader date={d} today={today} info={dayInfo[d]} />
+                    {selecting ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleDay(d)}
+                        className="w-full rounded-lg hover:bg-surface"
+                        aria-label={`בחירת כל הנציגים ב-${formatDayMonth(d)}`}
+                      >
+                        <DayHeader date={d} today={today} info={dayInfo[d]} />
+                      </button>
+                    ) : (
+                      <DayHeader date={d} today={today} info={dayInfo[d]} />
+                    )}
                   </th>
                 ))}
               </tr>
@@ -253,15 +428,30 @@ export function AllTeamsBoard({
                       className={cn(!agent.isActive || !agent.inTeam ? "opacity-60" : "")}
                     >
                       <th className="sticky start-0 z-10 border-b border-e border-border bg-surface px-3 py-1.5 text-start font-normal">
-                        <p className="truncate font-medium">{agentName(agent)}</p>
-                        <p className="text-xs text-fg-subtle">{agent.employeeNumber}</p>
+                        {selecting ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleAgent(view, agent)}
+                            className="block w-full text-start hover:text-primary"
+                          >
+                            <p className="truncate font-medium">{agentName(agent)}</p>
+                            <p className="text-xs text-fg-subtle">{agent.employeeNumber}</p>
+                          </button>
+                        ) : (
+                          <>
+                            <p className="truncate font-medium">{agentName(agent)}</p>
+                            <p className="text-xs text-fg-subtle">{agent.employeeNumber}</p>
+                          </>
+                        )}
                       </th>
                       {days.map((date) => {
                         const entry = view.assignments[assignmentId(agent.id, date)];
                         const closed = dayInfo[date]?.kind === "closed";
-                        const clickable =
-                          entry ||
-                          (view.lockReason === null && agent.isActive && agent.inTeam && !closed);
+                        const isSelected = selecting && selected.has(cellKey(agent.id, date));
+                        const clickable = selecting
+                          ? selectable(view, agent, date)
+                          : entry ||
+                            (view.lockReason === null && agent.isActive && agent.inTeam && !closed);
                         return (
                           <td
                             key={date}
@@ -275,8 +465,12 @@ export function AllTeamsBoard({
                               <button
                                 type="button"
                                 onClick={() => open(view, agent, date)}
-                                className="flex min-h-10 w-full items-center justify-center rounded-lg hover:bg-muted"
+                                className={cn(
+                                  "flex min-h-10 w-full items-center justify-center rounded-lg hover:bg-muted",
+                                  isSelected && "bg-primary/15 ring-2 ring-primary",
+                                )}
                                 aria-label={`${agentName(agent)} ${formatDayMonth(date)}`}
+                                aria-pressed={selecting ? isSelected : undefined}
                               >
                                 {entry ? <EntryChip entry={entry} catalog={catalog} /> : null}
                               </button>
@@ -416,13 +610,27 @@ export function AllTeamsBoard({
               <Card className="divide-y divide-border">
                 {agents.map((agent) => {
                   const entry = view.assignments[assignmentId(agent.id, day)];
+                  const isSelected = selecting && selected.has(cellKey(agent.id, day));
                   return (
                     <button
                       key={agent.id}
                       type="button"
                       onClick={() => open(view, agent, day)}
-                      className="flex w-full items-center gap-3 px-3 py-2 text-start"
+                      aria-pressed={selecting ? isSelected : undefined}
+                      className={cn(
+                        "flex w-full items-center gap-3 px-3 py-2 text-start",
+                        isSelected && "bg-primary/10",
+                        selecting && !selectable(view, agent, day) && "opacity-50",
+                      )}
                     >
+                      {selecting ? (
+                        <span
+                          className={cn(
+                            "h-4 w-4 shrink-0 rounded border",
+                            isSelected ? "border-primary bg-primary" : "border-border",
+                          )}
+                        />
+                      ) : null}
                       <span className="min-w-0 flex-1 truncate font-medium">
                         {agentName(agent)}
                       </span>
@@ -456,9 +664,82 @@ export function AllTeamsBoard({
           day={dayInfo[editing.target.date]}
           readOnly={editing.view.lockReason !== null}
           onClose={() => setEditing(null)}
-          onRangeResult={(r) => toast.success(r.summary)}
+          onRangeResult={showResult}
         />
       ) : null}
+
+      {selecting && selected.size > 0 ? (
+        <div className="sticky bottom-3 z-20 mx-auto flex w-fit flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 shadow-lg">
+          <span className="text-sm font-medium">נבחרו {selected.size} משבצות</span>
+          <Button size="sm" onClick={() => setBulkEditing(true)}>
+            שיבוץ לנבחרים
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+            <X className="h-4 w-4" />
+            ניקוי בחירה
+          </Button>
+        </div>
+      ) : null}
+
+      {bulkEditing ? (
+        <BulkEditor
+          cells={selectedCells}
+          catalog={catalog}
+          agentCount={new Set(selectedCells.map((c) => c.agentId)).size}
+          dayCount={new Set(selectedCells.map((c) => c.date)).size}
+          onClose={() => setBulkEditing(false)}
+          onDone={(data) => {
+            endSelection();
+            showResult(data);
+          }}
+        />
+      ) : null}
+
+      <Dialog
+        open={skipped !== null}
+        onClose={() => setSkipped(null)}
+        title="חלק מהשיבוצים דולגו"
+        footer={<Button onClick={() => setSkipped(null)}>הבנתי</Button>}
+      >
+        <ul className="space-y-1.5 text-sm">
+          {(skipped ?? []).map((s) => {
+            const agent = agentById.get(s.agentId);
+            return (
+              <li key={`${s.agentId}_${s.date}`}>
+                <strong>{agent ? agentName(agent) : ""}</strong>, {formatDayMonth(s.date)}:{" "}
+                {s.reason}
+              </li>
+            );
+          })}
+        </ul>
+      </Dialog>
+
+      <Dialog
+        open={confirmClear}
+        onClose={() => setConfirmClear(false)}
+        title="ניקוי השבוע"
+        description={`כל השיבוצים וההיעדרויות בשבוע זה יוסרו מ-${teamCount(editableTeams.length)}. בקשות אישור פתוחות יבוטלו. אפשר לבטל מיד אחרי.`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmClear(false)}>
+              ביטול
+            </Button>
+            <Button
+              variant="danger"
+              loading={bulk.pending}
+              onClick={() => {
+                setConfirmClear(false);
+                runTool("clear");
+              }}
+            >
+              ניקוי
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm">האם להמשיך?</p>
+      </Dialog>
     </div>
   );
 }
